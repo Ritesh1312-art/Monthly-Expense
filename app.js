@@ -51,6 +51,51 @@ const CATEGORIES = [
 ];
 const catById = id => CATEGORIES.find(c => c.id === id) || { id, name: id, icon: '❓', type: 'want' };
 
+/* ============================================================
+   FINANCE DATA — ek hi jagah saare verified numbers
+   Verified: 25 September 2026
+   Sources: CCIL (T-bill yields, 24 Sep 2026), bank websites +
+   BusinessToday (FD rates, Sep 2026), Groww/Scripbox (liquid
+   funds, Sep 2026), NSE Nifty 50 Factsheet/Whitepaper 2026
+   (index history), RBI/Finance Ministry (SGB status), Income
+   Tax Dept / TaxGuru (FY 2026-27 tax rules).
+   ⚠️ Rates badalte rehte hain — ye PLANNING ke figures hain,
+   guarantee nahi. Invest se pehle khud verify karein.
+   ============================================================ */
+const FINANCE_DATA = {
+  verifiedOn: '25 Sep 2026',
+  repoRate: '5.25% (RBI, Sep 2026)',
+  fd: { bigBanks: '6.25 – 7.1%', smallBanks: '8 – 8.5% tak', dicgc: '₹5 lakh / depositor / bank' },
+  liquidFunds: '≈ 6.4 – 6.6% (abhi ka 1-saal average)',
+  tbill: { d91: '≈ 5.4%', d182: '≈ 5.8%', d364: '≈ 6.1%' },
+  rd: '≈ 6.5 – 7.5%',
+  arbitrage: '≈ 6 – 7.5%',
+  nifty: {
+    tri20y: '≈ 12.4% / saal',
+    triSinceInception: '≈ 12.4% (1995 se)',
+    priSinceInception: '≈ 10.9% (1995 se)',
+  },
+  sgbStatus: 'Naye investment ke liye BAND — Feb 2024 ke baad koi naya tranche nahi (secondary market mein purane khareede ja sakte hain)',
+  tax: {
+    newRegimeDefault: 'New regime DEFAULT hai (₹12L tak income zero tax ho sakta hai)',
+    c80: '₹1.5L — sirf OLD regime (ELSS, PPF, LIC, EPF)',
+    nps50k: '₹50,000 extra — sirf OLD regime (80CCD(1B))',
+    employerNps: 'Employer NPS 14% tak — DONO regime mein (80CCD(2))',
+    equityLTCG: '12.5% — ₹1.25L/year se upar wale gains par',
+    equitySTCG: '20% — 12 mahine se kam hold par',
+    debtFunds: 'Slab rate (Apr 2023 ke baad khareede gaye debt funds)',
+  },
+  sources: [
+    ['T-Bill yields (91/182/364 din)', 'CCIL indicative yields — 24 Sep 2026'],
+    ['FD rates (SBI/HDFC/ICICI + small finance banks)', 'Bank websites, BusinessToday — Sep 2026'],
+    ['Liquid fund returns', 'Groww / Scripbox fund data — Sep 2026'],
+    ['Nifty 50 average return', 'NSE Nifty 50 Factsheet (Jun 2026) / Whitepaper 2026'],
+    ['SGB status', 'RBI / Finance Ministry post-Budget briefing'],
+    ['Tax rules FY 2026-27', 'Income Tax Act (via TaxGuru / ClearTax)'],
+    ['Repo rate', 'RBI MPC — Sep 2026'],
+  ],
+};
+
 /* ---------------- State ---------------- */
 function defaultState() {
   return { months: {}, goals: [], settings: { name: '', emergencyDone: false, emergencySaved: 0 } };
@@ -978,26 +1023,26 @@ function renderReport() {
    SALAH (ADVICE / INVESTMENT) VIEW
    ============================================================ */
 const QUICK_OPTIONS = [
-  { icon: '🏦', name: 'Fixed Deposit (FD)', time: '7 din – 5 saal', ret: '6.5 – 7.5% / saal', risk: 'Bahut kam', note: 'Bank ka guarantee, DICGC insurance ₹5L tak' },
-  { icon: '💧', name: 'Liquid Mutual Fund', time: '1 – 3 din mein nikaal sakte hain', ret: '6 – 7% / saal', risk: 'Bahut kam', note: 'Savings account se better return, almost turant access' },
-  { icon: '📜', name: 'Treasury Bill (T-Bill)', time: '91 / 182 / 364 din', ret: '~6.5 – 7% / saal', risk: 'Sarkar of India ka guarantee', note: 'RBI Retail Direct app se khareed sakte hain' },
-  { icon: '🔁', name: 'Recurring Deposit (RD)', time: '6 mahine – 2 saal', ret: '6.5 – 7.5% / saal', risk: 'Bahut kam', note: 'Har mahine fixed amount auto-debit — paisa bachta hi jayega' },
-  { icon: '⚖️', name: 'Arbitrage Fund', time: '3+ mahine', ret: '~7% / saal', risk: 'Kam', note: 'FD jaisa, par tax kaam lagta hai' },
+  { icon: '🏦', name: 'Fixed Deposit (FD)', time: '7 din – 10 saal', ret: FINANCE_DATA.fd.bigBanks + ' /saal', risk: 'Bahut kam', note: 'SBI ~6.3–6.45%, HDFC/ICICI ~7.1%, small finance banks 8%+. DICGC insurance ₹5L/bank' },
+  { icon: '💧', name: 'Liquid Mutual Fund', time: '1 – 3 din mein nikaal sakte hain', ret: '≈ 6.5% /saal (abhi)', risk: 'Bahut kam (market-linked)', note: 'Savings account se better, almost turant access — par return fixed nahi' },
+  { icon: '📜', name: 'Treasury Bill (T-Bill)', time: '91 / 182 / 364 din', ret: '≈ 5.4 – 6.1% /saal', risk: 'Bahut kam', note: '91D ≈5.4% · 182D ≈5.8% · 364D ≈6.1% — RBI Retail Direct app se, Govt of India ka paper' },
+  { icon: '🔁', name: 'Recurring Deposit (RD)', time: '6 mahine – 10 saal', ret: FINANCE_DATA.rd + ' /saal', risk: 'Bahut kam', note: 'Har mahine fixed amount auto-debit — paisa bachta hi jayega' },
+  { icon: '⚖️', name: 'Arbitrage Fund', time: '3+ mahine', ret: FINANCE_DATA.arbitrage + ' /saal', risk: 'Kam', note: 'Return FD jaisa, par equity tax (LTCG 12.5%) — high slab walo ko fayda' },
 ];
 
 function buildAllocation(leftover) {
   if (leftover <= 0) return [];
   const efDone = !!state.settings.emergencyDone;
   const base = efDone ? [
-    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 50, tag: 'Long Term', why: '5+ saal mein average ~12% return. Compounding ka asli jaadu — har mahine automatic invest hota rahega.' },
-    { icon: '🏦', name: 'FD / T-Bill / Debt Fund', pct: 25, tag: 'Short Term', why: 'Safe 6-7%. 1-3 saal ke goals (phone, vacation) ke liye.' },
-    { icon: '🥇', name: 'Gold (Sovereign Gold Bond)', pct: 15, tag: 'Hedge', why: 'Inflation se ladne wala asset — portfolio ko stable rakhta hai.' },
-    { icon: '🧾', name: 'ELSS / PPF (Tax Saving)', pct: 10, tag: 'Tax Bachat', why: 'Section 80C mein ₹1.5L tak — sarkar ko kam, apne ghar ko zyada.' },
+    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 50, tag: 'Long Term', why: 'Nifty 50 TRI ka 20-saal average ≈12.4% — ye ASSUMPTION hai, guarantee nahi. Har mahine automatic invest, compounding ka asli jaadu.' },
+    { icon: '🏦', name: 'FD / T-Bill / Debt Fund', pct: 25, tag: 'Short Term', why: 'Safe 5.4–7.5% (Sep 2026). 1-3 saal ke goals (phone, vacation) ke liye.' },
+    { icon: '🥇', name: 'Gold (Gold ETF / Gold Fund)', pct: 15, tag: 'Hedge', why: 'Inflation se ladne wala asset. (SGB naye investors ke liye band hai — Feb 2024 se koi naya tranche nahi.)' },
+    { icon: '🧾', name: 'ELSS / PPF (Tax Saving)', pct: 10, tag: 'Tax Bachat', why: 'Section 80C mein ₹1.5L tak — SIRF old regime mein (new regime default hai, ₹12L tak tax zero ho sakta hai).' },
   ] : [
     { icon: '🛡️', name: 'Emergency Fund (Liquid Fund/Savings)', pct: 40, tag: 'Sabse Pehle', why: '3-6 mahine ka kharcha pehle jama karein. Bimari, job jaana, koi bhi emergency — yahi aapko bachayega.' },
-    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 35, tag: 'Long Term', why: 'Bacha hua paisa har mahine automatic invest — long term ~12% average return.' },
-    { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: '6-7% safe return, zarurat pade to turant nikaal sakte hain.' },
-    { icon: '🥇', name: 'Gold (SGB / Gold ETF)', pct: 10, tag: 'Hedge', why: 'Thoda gold har portfolio mein hona hi chahiye.' },
+    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 35, tag: 'Long Term', why: 'Bacha hua paisa har mahine automatic invest — 20-saal average ≈12.4% (TRI), par ye assumption hai, guarantee nahi.' },
+    { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: 'Safe 5.4–7.5% return (Sep 2026), zarurat pade to turant nikaal sakte hain.' },
+    { icon: '🥇', name: 'Gold (Gold ETF / Fund)', pct: 10, tag: 'Hedge', why: 'Thoda gold har portfolio mein hona hi chahiye — SGB ab naye liye band hai.' },
   ];
   const cards = base.map(a => Object.assign({}, a, { amount: Math.floor(leftover * a.pct / 100) }));
   /* Rounding ka bacha hua paisa pehli (sabse badi) card ko — total EXACT leftover */
@@ -1047,24 +1092,24 @@ function renderAdvice() {
     </div>
     ${efCard}
     ${educationCards()}
+    ${sourcesCardHtml()}
     ${disclaimerHtml()}`;
     return;
   }
 
   const alloc = buildAllocation(leftover);
 
-  /* --- SIP projection table --- */
+  /* --- SIP projection: SENSITIVITY table (koi ek number dikhana misleading hai) --- */
+  const rates = [8, 10, 12, 15];
   const projRows = [5, 10, 20].map(y => {
-    const fv = sipFV(leftover, y, 12);
     const invested = leftover * 12 * y;
     return `<tr>
       <td><b>${y} saal</b></td>
       <td class="td-r">${fmt(invested)}</td>
-      <td class="td-r pos"><b>${fmt(fv)}</b></td>
-      <td class="td-r pos">+${fmt(fv - invested)}</td>
+      ${rates.map(r => `<td class="td-r${r === 12 ? ' pos' : ''}">${r === 12 ? '<b>' + fmt(sipFV(leftover, y, r)) + '</b>' : fmt(sipFV(leftover, y, r))}</td>`).join('')}
     </tr>`;
   }).join('');
-  const fdOneYear = leftover * 12 * 1.07;
+  const fdOneYear = leftover * 12 * 1.065;
 
   /* --- 50-30-20 rule --- */
   const needsPct = salary > 0 ? nw.needsPlan / salary * 100 : 0;
@@ -1135,20 +1180,21 @@ function renderAdvice() {
       </table>
     </div>
     <div class="honesty mt8">
-      <b>⚠️ Sachai ye hai:</b> "1 mahine mein paisa double" — aisa koi jaadu nahi hota. Jo bhi aisa bole (crypto tips, day-trading group, "assured 50% return"), wo <b>99% scam hai</b>. Short-term mein market juwa hai. Asli ameer banna 5-20 saal ke SIP aur compounding se hota hai — neeche dekh kaise. 👇
+      <b>⚠️ Sachai ye hai:</b> "1 mahine mein paisa double" — aisa koi jaadu nahi hota. Jo bhi aisa bole (crypto tips, day-trading group, "assured 50% return"), wo <b>99% scam hai</b>. SEBI rule ke hisaab se mutual funds "guaranteed return" de hi nahi sakte — jo guarantee bole, who jhooth hai. Short-term mein market juwa hai. Asli ameer banna 5-20 saal ke SIP aur compounding se hota hai — neeche dekh kaise. 👇
     </div>
   </div>
 
   <div class="card">
-    <div class="card-title">🔮 Agar Har Mahine ${fmt(leftover)} SIP Karhein (12% avg)</div>
+    <div class="card-title">🔮 SIP Scenario Table — Har Mahine ${fmt(leftover)}</div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Period</th><th class="td-r">Aapne Lagaya</th><th class="td-r">Bana (12% avg)</th><th class="td-r">Munafa</th></tr></thead>
+        <thead><tr><th>Period</th><th class="td-r">Aapne Lagaya</th><th class="td-r">8% (dheema)</th><th class="td-r">10%</th><th class="td-r">12%*</th><th class="td-r">15% (tez)</th></tr></thead>
         <tbody>${projRows}</tbody>
       </table>
     </div>
-    <div class="small muted mt8">📊 Compare: utna hi FD mein daalne par 1 saal mein ≈ ${fmt(fdOneYear)} (7% par). Equity ka fayda lambe samay mein hai — short mein market upar-neeche ho sakta hai.</div>
-    <div class="scam mt8"><b>🚨 Yaad Rakhein:</b> SIP bhi market risk hai — 12% "average" hai, guarantee nahi. Jo "guaranteed 20-30%" bole, wo jhooth hai. Long term (5+ saal) mein hi equity ka asli fayda dikhta hai.</div>
+    <div class="small muted mt8">* <b>12% koi guarantee NAHI hai</b> — ye Nifty 50 TRI ka 20-saal average (≈12.4%, Feb 2026 tak) hai. Market 8% bhi de sakti hai, 15% bhi — aur 1-3 saal mein NEGATIVE bhi. Isi liye poora range dikhaya gaya hai.</div>
+    <div class="small muted mt8">📊 Compare: utna hi FD mein daalne par 1 saal mein ≈ ${fmt(fdOneYear)} (6.5% maan kar). FD ka return fixed hota hai, SIP ka nahi.</div>
+    <div class="scam mt8"><b>🚨 Yaad Rakhein:</b> Mutual fund/SIP "guaranteed return" NAHI de sakte — SEBI rule hai. Jo bhi "guaranteed 20-30%" bole, wo jhooth hai. Long term (5-10+ saal) mein hi equity ka asli fayda dikhta hai.</div>
   </div>
 
   <div class="card">
@@ -1160,14 +1206,16 @@ function renderAdvice() {
   </div>
 
   <div class="card">
-    <div class="card-title">🧾 Tax Bachat Ki Salhein</div>
+    <div class="card-title">🧾 Tax Ke Rules (FY 2026-27)</div>
     <div class="tips">
-      <div class="tip tip-info"><span class="tip-ico">🧾</span><div><div class="tip-title">Section 80C — ₹1.5L tak</div><div class="tip-text">ELSS mutual fund, PPF, LIC, EPF — in sab pe ₹1.5L tak invest karke taxable income kam karein. ELSS mein sirf 3 saal lock-in hai.</div></div></div>
-      <div class="tip tip-info"><span class="tip-ico">👴</span><div><div class="tip-title">NPS — extra ₹50,000</div><div class="tip-text">80C ke alawa NPS mein ₹50K tak aur tax bachta hai (old regime mein). Retirement ki taiyari bhi ho jayegi.</div></div></div>
-      <div class="tip tip-info"><span class="tip-ico">📊</span><div><div class="tip-title">Slab Check</div><div class="tip-text">Old vs new regime — apne investments dekh kar CA/online calculator se compare karein. Kabhi kabhi 20-30k ka farak padta hai.</div></div></div>
+      <div class="tip tip-info"><span class="tip-ico">📊</span><div><div class="tip-title">Old vs New Regime — pehle ye dekhein</div><div class="tip-text">New regime DEFAULT hai (₹12L tak income zero tax ho sakta hai). Lekin 80C/80D/NPS-₹50K sirf OLD regime mein milte hain. Dono ka hisaab lagakar decide karein — kabhi kabhi 20-30k ka farak padta hai.</div></div></div>
+      <div class="tip tip-info"><span class="tip-ico">🧾</span><div><div class="tip-title">Section 80C — ₹1.5L (sirf OLD regime)</div><div class="tip-text">ELSS, PPF, LIC, EPF. New regime mein ye deduction NAHI milta. ELSS mein sirf 3 saal lock-in hai.</div></div></div>
+      <div class="tip tip-info"><span class="tip-ico">👴</span><div><div class="tip-title">NPS — ₹50,000 extra (sirf OLD regime)</div><div class="tip-text">80CCD(1B). Bonus: employer NPS contribution 14% tak (80CCD(2)) DONO regime mein milta hai.</div></div></div>
+      <div class="tip tip-info"><span class="tip-ico">⚖️</span><div><div class="tip-title">Capital Gains Tax (equity/mutual fund)</div><div class="tip-text">12 mahine se kam hold = STCG 20%. Zyada hold = LTCG 12.5% (₹1.25L/year tak gains free). Apr 2023 ke baad ke debt funds = slab rate.</div></div></div>
     </div>
   </div>
 
+  ${sourcesCardHtml()}
   ${disclaimerHtml()}`;
 }
 
@@ -1187,8 +1235,34 @@ function educationCards() {
   </div>`;
 }
 
+function sourcesCardHtml() {
+  const rows = [
+    ['🏦 FD (bade banks)', FINANCE_DATA.fd.bigBanks, 'Bank websites — Sep 2026'],
+    ['🏦 FD (small finance banks)', FINANCE_DATA.fd.smallBanks + ' — par DICGC ₹5L/bank ke andar hi', 'Bank websites — Sep 2026'],
+    ['📜 T-Bill 91 / 182 / 364 din', FINANCE_DATA.tbill.d91 + ' / ' + FINANCE_DATA.tbill.d182 + ' / ' + FINANCE_DATA.tbill.d364, 'CCIL — 24 Sep 2026'],
+    ['💧 Liquid funds (1-saal)', FINANCE_DATA.liquidFunds, 'Groww / Scripbox — Sep 2026'],
+    ['📈 Nifty 50 TRI average', FINANCE_DATA.nifty.tri20y + ' (20 saal) · ' + FINANCE_DATA.nifty.triSinceInception + ' (1995 se)', 'NSE Factsheet / Whitepaper 2026'],
+    ['🥇 SGB status', 'Naye investment ke liye BAND (Feb 2024 se)', 'RBI / Finance Ministry'],
+    ['🏦 RBI Repo Rate', FINANCE_DATA.repoRate, 'RBI MPC — Sep 2026'],
+    ['🧾 Tax (FY 2026-27)', 'New regime default · 80C/NPS-₹50K sirf old regime · LTCG 12.5%, STCG 20%', 'Income Tax Act / TaxGuru'],
+  ];
+  return `
+  <div class="card">
+    <div class="card-title">📚 Ye Adaad Kahan Se Aaye? <span class="chip good">Verified ${FINANCE_DATA.verifiedOn}</span></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Baat</th><th>Value</th><th>Source</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td class="small muted">${r[2]}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="tip tip-warn mt8"><span class="tip-ico">🔄</span><div class="tip-text"><b>Rates badalte rehte hain</b> — ye ${FINANCE_DATA.verifiedOn} ke verified figures hain. Invest karne se pehle current rates khud check karein (bank, RBI Retail Direct, ya SEBI-registered advisor se).</div></div>
+  </div>`;
+}
+
 function disclaimerHtml() {
-  return `<div class="disclaimer">ℹ️ Ye salah general financial education hai, personalized investment advice nahi. Invest karne se pehle apni sthiti ke hisaab se SEBI-registered advisor se salah lein. App ka data sirf aapke browser mein save hota hai.</div>`;
+  return `<div class="disclaimer">⚠️ <b>PaisaGuru SEBI-registered investment advisor NAHI hai.</b> Ye app general financial education deti hai — personalized investment advice nahi. Saare numbers ${FINANCE_DATA.verifiedOn} ko verified hain, par market/rates badalte rehte hain aur koi bhi return guaranteed nahi hai (mutual funds market risk ke subject hain). Bada investment karne se pehle apni sthiti ke hisaab se SEBI-registered advisor se salah zaroor lein. App ka data sirf aapke browser mein save hota hai.</div>`;
 }
 
 /* ============================================================
@@ -1563,7 +1637,8 @@ function renderSettings() {
       <div>💰 <b>PaisaGuru</b> — Monthly Expense Tracker & Smart Saving Advisor</div>
       <div>Salary aaye → plan banaye → jo bache use invest kare → har mahine analysis se better kare. Ye poori app offline chalti hai, data aapke paas rehta hai.</div>
       <div>🎤 Voice input (Chrome/Edge) · 🎯 Savings Goals · 📊 Monthly analysis · 💡 Investment salah</div>
-      <div>Version 1.1 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
+      <div>📚 Investment ke saare numbers <b>${FINANCE_DATA.verifiedOn}</b> ko web se verify kiye gaye hain — Salah tab mein sources ki poori table hai.</div>
+      <div>Version 1.2 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
     </div>
   </div>
   ${disclaimerHtml()}`;

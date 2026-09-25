@@ -93,7 +93,28 @@ Monthly-Expense/
 
 ## ⚠️ Disclaimer
 
-Ye app **general financial education** ke liye hai — personalized investment advice nahi. FD/SIP/mutual funds ke real rates time ke saath badalte hain. Bada investment karne se pehle SEBI-registered financial advisor se salah zaroor lein.
+Ye app **general financial education** ke liye hai — personalized investment advice nahi. **PaisaGuru SEBI-registered investment advisor NAHI hai.** Investment ke saare numbers web se verify karke, date-stamp ke saath dikhaye jaate hain (Salah tab → "Ye Adaad Kahan Se Aaye?" card mein sources ki poori table). Par rates badalte rehte hain aur **koi bhi return guaranteed nahi** — bada investment karne se pehle SEBI-registered advisor se salah lein.
+
+## 📚 Data Verification (25 Sep 2026)
+
+App ke saare investment numbers ek hi jagah (`FINANCE_DATA` in `app.js`) mein hain, web-verified:
+
+| Baat | Value (Sep 2026) | Source |
+|---|---|---|
+| FD — bade banks | 6.25–7.1% (SBI ~6.45%, HDFC/ICICI ~7.1%) | Bank websites / BusinessToday |
+| FD — small finance banks | 8–8.5% tak (DICGC ₹5L/bank ke andar) | Bank websites |
+| T-Bill 91D / 182D / 364D | ≈5.4% / ≈5.8% / ≈6.1% | CCIL (24 Sep 2026) |
+| Liquid funds | ≈6.4–6.6% (1-saal) | Groww / Scripbox |
+| Nifty 50 TRI average | ≈12.4% (20 saal), ≈12.4% (1995 se) | NSE Factsheet / Whitepaper 2026 |
+| SGB | **Naye investment ke liye band** (Feb 2024 se koi tranche nahi) — isliye app Gold ETF/Fund batati hai | RBI / Finance Ministry |
+| Tax (FY 2026-27) | New regime default · 80C/NPS-₹50K sirf old regime · Equity LTCG 12.5% (₹1.25L/yr exempt), STCG 20% | Income Tax Act / TaxGuru |
+| RBI Repo Rate | 5.25% | RBI MPC |
+
+> **App ke design ke 4 safety principles:**
+> 1. **Single source of truth** — saare rates ek `FINANCE_DATA` object mein, har jagah wahi se aate hain
+> 2. **Date-stamped + sourced** — har number ke saath "verified when" + "source" UI mein dikhta hai
+> 3. **Ranges, not promises** — SIP projection 8%/10%/12%/15% scenario table hai, ek number nahi; 12% clearly "assumption, guarantee nahi" labeled
+> 4. **No guarantees, ever** — "guaranteed return" wali cheez SEBI rule ke khilaf hai, app isko har jagah clear karti hai
 
 ## 🗺️ Future Ideas
 
