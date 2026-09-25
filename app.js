@@ -598,7 +598,11 @@ function buildAllocation(leftover) {
     { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: '6-7% safe return, zarurat pade to turant nikaal sakte hain.' },
     { icon: '🥇', name: 'Gold (SGB / Gold ETF)', pct: 10, tag: 'Hedge', why: 'Thoda gold har portfolio mein hona hi chahiye.' },
   ];
-  return base.map(a => Object.assign({}, a, { amount: Math.floor(leftover * a.pct / 100 / 100) * 100 }));
+  const cards = base.map(a => Object.assign({}, a, { amount: Math.floor(leftover * a.pct / 100) }));
+  /* Rounding ka bacha hua paisa pehli (sabse badi) card ko — total EXACT leftover */
+  const diff = leftover - sum(cards.map(c => c.amount));
+  if (diff > 0 && cards.length) cards[0].amount += diff;
+  return cards;
 }
 
 function sipFV(monthly, years, annualRate) {
@@ -1196,81 +1200,91 @@ function clearAllData() {
 }
 
 /* ============================================================
-   DEMO DATA — 3 mahine ka realistic sample
+   DEMO DATA — current + pichle 2 mahine ka realistic sample
+   (Dynamic: hamesha aaj ke mahine ke hisaab se banta hai)
    ============================================================ */
 function loadDemoData() {
   let idc = 1;
-  const E = (date, cat, amount, note) => ({ id: 'demo' + (idc++), date, category: cat, amount, note });
+  const iso = (key, day) => key + '-' + String(Math.min(day, daysInMonth(key))).padStart(2, '0');
+  const E = (key, day, cat, amount, note) => ({ id: 'demo' + (idc++), date: iso(key, day), category: cat, amount, note });
+
+  const cur = monthKey(new Date());
+  const m1 = addMonths(cur, -1);
+  const m2 = addMonths(cur, -2);
+  const todayD = new Date().getDate();
+
+  /* Current month ke expenses sirf aaj tak (realistic pace) */
+  const onlyTillToday = arr => arr.filter(e => Number(e.date.slice(8, 10)) <= todayD);
 
   const state2 = { months: {}, settings: { name: '', emergencyDone: false, emergencySaved: 5000 } };
 
-  /* ---- July 2026: normal month ---- */
-  state2.months['2026-07'] = {
-    salary: 50000, salaryDate: '2026-07-01',
+  /* ---- Mahina -2: normal month ---- */
+  state2.months[m2] = {
+    salary: 50000, salaryDate: iso(m2, 1),
     planned: { rent: 10000, grocery: 9000, bills: 2500, medical: 1500, transport: 3000, recharge: 500, shopping: 6000, eatingout: 4000, entertainment: 2000, others: 1000 },
     expenses: [
-      E('2026-07-01', 'rent', 10000, 'Ghar ka kiraya'),
-      E('2026-07-03', 'grocery', 4300, 'Big Bazaar'),
-      E('2026-07-05', 'bills', 2400, 'Bijli ka bill'),
-      E('2026-07-06', 'shopping', 5200, 'Nayi shirt aur shoes'),
-      E('2026-07-09', 'eatingout', 1800, 'Zomato'),
-      E('2026-07-12', 'transport', 1500, 'Petrol'),
-      E('2026-07-15', 'grocery', 3200, 'Sabzi + rashan'),
-      E('2026-07-16', 'entertainment', 1200, 'Movie'),
-      E('2026-07-19', 'eatingout', 1600, 'Family dinner'),
-      E('2026-07-21', 'shopping', 4300, 'Sale ki shopping'),
-      E('2026-07-24', 'transport', 1800, 'Petrol + auto'),
-      E('2026-07-26', 'medical', 500, 'Dawa'),
-      E('2026-07-27', 'recharge', 500, 'Mobile recharge'),
-      E('2026-07-28', 'eatingout', 1800, 'Cafe'),
-      E('2026-07-30', 'grocery', 2300, 'Mahine ka rashan'),
-      E('2026-07-31', 'others', 1800, 'Ghar ka saman'),
+      E(m2, 1, 'rent', 10000, 'Ghar ka kiraya'),
+      E(m2, 3, 'grocery', 4300, 'Big Bazaar'),
+      E(m2, 5, 'bills', 2400, 'Bijli ka bill'),
+      E(m2, 6, 'shopping', 5200, 'Nayi shirt aur shoes'),
+      E(m2, 9, 'eatingout', 1800, 'Zomato'),
+      E(m2, 12, 'transport', 1500, 'Petrol'),
+      E(m2, 15, 'grocery', 3200, 'Sabzi + rashan'),
+      E(m2, 16, 'entertainment', 1200, 'Movie'),
+      E(m2, 19, 'eatingout', 1600, 'Family dinner'),
+      E(m2, 21, 'shopping', 4300, 'Sale ki shopping'),
+      E(m2, 24, 'transport', 1800, 'Petrol + auto'),
+      E(m2, 26, 'medical', 500, 'Dawa'),
+      E(m2, 27, 'recharge', 500, 'Mobile recharge'),
+      E(m2, 28, 'eatingout', 1800, 'Cafe'),
+      E(m2, 29, 'grocery', 2300, 'Mahine ka rashan'),
+      E(m2, 30, 'others', 1800, 'Ghar ka saman'),
     ]
   };
 
-  /* ---- August 2026: shopping phat gayi ---- */
-  state2.months['2026-08'] = {
-    salary: 50000, salaryDate: '2026-08-01',
+  /* ---- Pichla mahina: shopping phat gayi ---- */
+  state2.months[m1] = {
+    salary: 50000, salaryDate: iso(m1, 1),
     planned: { rent: 10000, grocery: 9000, bills: 2500, medical: 1500, transport: 3000, recharge: 500, shopping: 7000, eatingout: 4000, entertainment: 2000, others: 1000 },
     expenses: [
-      E('2026-08-01', 'rent', 10000, 'Ghar ka kiraya'),
-      E('2026-08-03', 'grocery', 3600, 'Rashan'),
-      E('2026-08-05', 'bills', 2600, 'Bijli + paani'),
-      E('2026-08-07', 'shopping', 6300, 'Amazon sale'),
-      E('2026-08-09', 'eatingout', 1500, 'Swiggy'),
-      E('2026-08-10', 'transport', 1600, 'Petrol'),
-      E('2026-08-14', 'grocery', 3400, 'Sabzi + rashan'),
-      E('2026-08-15', 'entertainment', 1400, 'Movie + popcorn'),
-      E('2026-08-17', 'eatingout', 1700, 'Weekend dinner'),
-      E('2026-08-19', 'medical', 1100, 'Checkup'),
-      E('2026-08-21', 'shopping', 6300, 'Clothes sale'),
-      E('2026-08-23', 'transport', 1700, 'Petrol + cab'),
-      E('2026-08-25', 'eatingout', 1400, 'Cafe'),
-      E('2026-08-27', 'recharge', 500, 'Mobile recharge'),
-      E('2026-08-28', 'grocery', 3100, 'Mahine ka rashan'),
-      E('2026-08-30', 'others', 900, 'Misc'),
+      E(m1, 1, 'rent', 10000, 'Ghar ka kiraya'),
+      E(m1, 3, 'grocery', 3600, 'Rashan'),
+      E(m1, 5, 'bills', 2600, 'Bijli + paani'),
+      E(m1, 7, 'shopping', 6300, 'Amazon sale'),
+      E(m1, 9, 'eatingout', 1500, 'Swiggy'),
+      E(m1, 10, 'transport', 1600, 'Petrol'),
+      E(m1, 14, 'grocery', 3400, 'Sabzi + rashan'),
+      E(m1, 15, 'entertainment', 1400, 'Movie + popcorn'),
+      E(m1, 17, 'eatingout', 1700, 'Weekend dinner'),
+      E(m1, 19, 'medical', 1100, 'Checkup'),
+      E(m1, 21, 'shopping', 6300, 'Clothes sale'),
+      E(m1, 23, 'transport', 1700, 'Petrol + cab'),
+      E(m1, 25, 'eatingout', 1400, 'Cafe'),
+      E(m1, 27, 'recharge', 500, 'Mobile recharge'),
+      E(m1, 28, 'grocery', 3100, 'Mahine ka rashan'),
+      E(m1, 29, 'others', 900, 'Misc'),
     ]
   };
 
-  /* ---- September 2026: salary badhi, sambhal ke chala ---- */
-  state2.months['2026-09'] = {
-    salary: 52000, salaryDate: '2026-09-01',
+  /* ---- Current mahina: salary badhi, sambhal ke chala ---- */
+  state2.months[cur] = {
+    salary: 52000, salaryDate: iso(cur, 1),
     planned: { rent: 10000, grocery: 9000, bills: 2500, medical: 1500, transport: 3000, recharge: 1000, shopping: 5000, eatingout: 3000, entertainment: 2000, others: 1000 },
-    expenses: [
-      E('2026-09-01', 'rent', 10000, 'Ghar ka kiraya'),
-      E('2026-09-02', 'grocery', 3800, 'Big Bazaar'),
-      E('2026-09-04', 'bills', 2600, 'Bijli ka bill'),
-      E('2026-09-08', 'shopping', 3100, 'Amazon order'),
-      E('2026-09-10', 'eatingout', 1300, 'Swiggy'),
-      E('2026-09-11', 'transport', 1300, 'Petrol'),
-      E('2026-09-13', 'grocery', 2900, 'Rashan'),
-      E('2026-09-16', 'medical', 900, 'Dawa'),
-      E('2026-09-18', 'recharge', 1000, 'Recharge + WiFi'),
-      E('2026-09-20', 'eatingout', 1500, 'Dinner'),
-      E('2026-09-21', 'entertainment', 1200, 'Movie'),
-      E('2026-09-22', 'transport', 1300, 'Petrol'),
-      E('2026-09-24', 'grocery', 2000, 'Sabzi'),
-    ]
+    expenses: onlyTillToday([
+      E(cur, 1, 'rent', 10000, 'Ghar ka kiraya'),
+      E(cur, 2, 'grocery', 3800, 'Big Bazaar'),
+      E(cur, 4, 'bills', 2600, 'Bijli ka bill'),
+      E(cur, 8, 'shopping', 3100, 'Amazon order'),
+      E(cur, 10, 'eatingout', 1300, 'Swiggy'),
+      E(cur, 11, 'transport', 1300, 'Petrol'),
+      E(cur, 13, 'grocery', 2900, 'Rashan'),
+      E(cur, 16, 'medical', 900, 'Dawa'),
+      E(cur, 18, 'recharge', 1000, 'Recharge + WiFi'),
+      E(cur, 20, 'eatingout', 1500, 'Dinner'),
+      E(cur, 21, 'entertainment', 1200, 'Movie'),
+      E(cur, 22, 'transport', 1300, 'Petrol'),
+      E(cur, 24, 'grocery', 2000, 'Sabzi'),
+    ])
   };
 
   state = state2;
