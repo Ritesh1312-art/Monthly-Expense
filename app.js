@@ -53,7 +53,7 @@ const catById = id => CATEGORIES.find(c => c.id === id) || { id, name: id, icon:
 
 /* ---------------- State ---------------- */
 function defaultState() {
-  return { months: {}, settings: { name: '', emergencyDone: false, emergencySaved: 0 } };
+  return { months: {}, goals: [], settings: { name: '', emergencyDone: false, emergencySaved: 0 } };
 }
 function loadState() {
   try {
@@ -63,6 +63,7 @@ function loadState() {
     const base = defaultState();
     return {
       months: parsed && parsed.months ? parsed.months : {},
+      goals: parsed && Array.isArray(parsed.goals) ? parsed.goals : [],
       settings: Object.assign(base.settings, (parsed && parsed.settings) || {})
     };
   } catch (e) { return defaultState(); }
@@ -124,6 +125,388 @@ function emergencyTarget(key) {
 }
 
 /* ============================================================
+   VOICE INPUT — bolo, app samjhega 🎤
+   "aaj paanch sau ki sabzi" → 🛒 Grocery ₹500
+   Hinglish (Latin), Devanagari aur English numbers support
+   ============================================================ */
+const NUM_WORDS = {
+  /* --- Hinglish (Latin) --- */
+  'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'chaar': 4, 'panch': 5, 'paanch': 5, 'chah': 6, 'chhe': 6, 'chhah': 6,
+  'saat': 7, 'aath': 8, 'nau': 9, 'das': 10, 'gyarah': 11, 'barah': 12, 'baraah': 12, 'terah': 13, 'chaudah': 14,
+  'pandrah': 15, 'pandra': 15, 'solah': 16, 'satrah': 17, 'atharah': 18, 'unnees': 19, 'bees': 20, 'bis': 20,
+  'ikkees': 21, 'baees': 22, 'teis': 23, 'chaubees': 24, 'chubees': 24, 'chhabbees': 26, 'sattaees': 27, 'atthaees': 28, 'untiis': 29,
+  'tees': 30, 'iktees': 31, 'battees': 32, 'taintees': 33, 'chauntees': 34, 'paintees': 35, 'chhattees': 36, 'saintees': 37, 'aintees': 38, 'untalees': 39,
+  'chaalees': 40, 'iktalees': 41, 'bytalees': 42, 'paintalees': 43, 'chautalees': 44, 'paintaalees': 45, 'chhiyaalees': 46, 'saintaalees': 47, 'antaalees': 48, 'unchaalees': 49,
+  'pachaas': 50, 'pachas': 50, 'ikyaavan': 51, 'baavan': 52, 'tirpan': 53, 'chauvan': 54, 'pachpan': 55, 'chhappan': 56, 'sattaavan': 57, 'atthaavan': 58, 'unsath': 59,
+  'saath': 60, 'iksaath': 61, 'baaath': 62, 'tirsath': 63, 'chausaath': 64, 'paisath': 65, 'chiyaasath': 66, 'sarsath': 67, 'aasath': 68, 'unhattar': 69,
+  'sattar': 70, 'ikhattar': 71, 'bahattar': 72, 'tihattar': 73, 'chauhattar': 74, 'pachhattar': 75, 'chhihattar': 76, 'sathattar': 77, 'athhattar': 78, 'unaasi': 79,
+  'assi': 80, 'ikyaasi': 81, 'bayaasi': 82, 'tirasi': 83, 'chaursaasi': 84, 'pachaasi': 85, 'chiyaasi': 86, 'sataasi': 87, 'athaasi': 88, 'navaasi': 89,
+  'nabbe': 90, 'ikyaanve': 91, 'baanve': 92, 'tiraanve': 93, 'chauraanve': 94, 'pachaanve': 95, 'pachanve': 95, 'chhiyaanve': 96, 'sataanve': 97, 'athaanve': 98, 'ninyaanve': 99,
+  'sau': 100, 'hazaar': 1000, 'hazar': 1000, 'hajar': 1000,
+  /* --- special (aadhe) --- */
+  'dedh': 1.5, 'dhai': 2.5,
+  /* --- Devanagari --- */
+  'एक': 1, 'दो': 2, 'तीन': 3, 'चार': 4, 'पांच': 5, 'पाँच': 5, 'छह': 6, 'छः': 6, 'सात': 7, 'आठ': 8, 'नौ': 9, 'दस': 10,
+  'ग्यारह': 11, 'बारह': 12, 'तेरह': 13, 'चौदह': 14, 'पंद्रह': 15, 'सोलह': 16, 'सत्रह': 17, 'अठारह': 18, 'उन्नीस': 19, 'बीस': 20,
+  'इक्कीस': 21, 'बाईस': 22, 'तेइस': 23, 'चौबीस': 24, 'पच्चीस': 25, 'छब्बीस': 26, 'सत्ताईस': 27, 'अट्ठाईस': 28, 'उनतीस': 29,
+  'तीस': 30, 'इकतीस': 31, 'बत्तीस': 32, 'तैंतीस': 33, 'चौंतीस': 34, 'पैंतीस': 35, 'छत्तीस': 36, 'सैंतीस': 37, 'अड़तीस': 38, 'उनतालीस': 39,
+  'चालीस': 40, 'इकतालीस': 41, 'बयालीस': 42, 'पैंतालीस': 43, 'चौवालीस': 44, 'पैंतालीस': 45, 'छियालीस': 46, 'सैंतालीस': 47, 'अड़तालीस': 48, 'उनचालीस': 49,
+  'पचास': 50, 'इक्यावन': 51, 'बावन': 52, 'तिरपन': 53, 'चौवन': 54, 'पचपन': 55, 'छप्पन': 56, 'सत्तावन': 57, 'अट्ठावन': 58, 'उनसठ': 59,
+  'साठ': 60, 'इकसठ': 61, 'बासठ': 62, 'तिरसठ': 63, 'चौंसठ': 64, 'पैंसठ': 65, 'छियासठ': 66, 'सड़सठ': 67, 'अड़सठ': 68, 'उनहत्तर': 69,
+  'सत्तर': 70, 'इकहत्तर': 71, 'बहत्तर': 72, 'तिहत्तर': 73, 'चौहत्तर': 74, 'पचहत्तर': 75, 'छिहत्तर': 76, 'सतहत्तर': 77, 'अठहत्तर': 78, 'उन्यासी': 79,
+  'अस्सी': 80, 'इक्यासी': 81, 'बयासी': 82, 'तिरासी': 83, 'चौरासी': 84, 'पचासी': 85, 'छियासी': 86, 'सतासी': 87, 'अठासी': 88, 'नवासी': 89,
+  'नब्बे': 90, 'इक्यानवे': 91, 'बानवे': 92, 'तिरानवे': 93, 'चौरानवे': 94, 'पचानवे': 95, 'छियानवे': 96, 'सतानवे': 97, 'अठानवे': 98, 'निन्यानवे': 99,
+  'सौ': 100, 'हज़ार': 1000, 'हजार': 1000, 'लाख': 100000, 'करोड़': 10000000,
+  'डेढ़': 1.5, 'ढाई': 2.5,
+  /* --- English --- */
+  'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+  'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
+  'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+  'hundred': 100, 'thousand': 1000, 'lakh': 100000, 'crore': 10000000,
+};
+
+/* Digit ke aage-lage multiplier: "2 hazaar", "1.5 lakh", "700 hundred"? nahi — "3 sau" */
+const VOICE_MULT = {
+  'sau': 100, 'सौ': 100, 'hazaar': 1000, 'hazar': 1000, 'hajar': 1000, 'thousand': 1000,
+  'हज़ार': 1000, 'हजार': 1000, 'lakh': 100000, 'लाख': 100000, 'crore': 10000000, 'करोड़': 10000000, 'hundred': 100,
+};
+
+/* Category keywords (order matter karta hai — pehla match jeetega) */
+const CAT_KEYWORDS = [
+  ['recharge', ['recharge', 'रिचार्ज', 'internet', 'इंटरनेट', 'wifi', 'वाईफ़ाई', 'वाईफाई', 'data pack']],
+  ['rent', ['kiraya', 'किराया', 'rent', 'रेंट']],
+  ['emi', ['emi', 'ईएमआई', 'loan', 'लोन', 'kist', 'किस्त', 'installment']],
+  ['medical', ['dawa', 'दवा', 'dawai', 'दवाई', 'medicine', 'medical', 'doctor', 'डॉक्टर', 'hospital', 'अस्पताल', 'checkup', 'चेकअप']],
+  ['education', ['fees', 'फीस', 'school', 'स्कूल', 'college', 'कॉलेज', 'tuition', 'ट्यूशन', 'padhai', 'पढ़ाई', 'exam', 'परीक्षा']],
+  ['bills', ['bijli', 'बिजली', 'bill', 'बिल', 'paani', 'पानी', 'electricity']],
+  ['transport', ['petrol', 'पेट्रोल', 'diesel', 'डीज़ल', 'डीजल', 'cab', 'taxi', 'टैक्सी', 'auto', 'रिक्शा', 'rickshaw', 'bus', 'बस', 'metro', 'मेट्रो', 'uber', 'ola', 'train', 'ट्रेन', 'flight', 'फ्लाइट']],
+  ['grocery', ['sabzi', 'सब्ज़ी', 'सब्जी', 'sabjee', 'rashan', 'राशन', 'grocery', 'vegetable', 'doodh', 'दूध', 'atta', 'आटा', 'chawal', 'चावल', 'kirana', 'किराना', 'masala', 'मसाला', 'bazaar', 'बाजार']],
+  ['eatingout', ['zomato', 'swiggy', 'khana', 'खाना', 'खाया', 'restaurant', 'रेस्टोरेंट', 'cafe', 'कैफे', 'chai', 'चाय', 'nashta', 'नाश्ता', 'dinner', 'डिनर', 'lunch', 'लंच', 'pizza', 'burger', 'momos', 'मोमो', 'coffee', 'कॉफी']],
+  ['shopping', ['shopping', 'शॉपिंग', 'amazon', 'flipkart', 'myntra', 'shoes', 'जूते', 'shoe', 'shirt', 'कमीज़', 'kapde', 'कपड़े', 'clothes', 'sale', 'सेल', 'phone', 'फोन', 'laptop', 'लैपटॉप', 'headphone', 'bag', 'बैग', 'watch', 'घड़ी', 'gold', 'सोना']],
+  ['entertainment', ['movie', 'मूवी', 'फिल्म', 'cinema', 'सिनेमा', 'picture', 'पिक्चर', 'netflix', 'ghumna', 'घूमना', 'trip', 'ट्रिप', 'vacation', 'ghoomne']],
+];
+
+function extractAmount(text) {
+  if (!text) return null;
+  const devMap = { '०': '0', '१': '1', '२': '2', '३': '3', '४': '4', '५': '5', '६': '6', '७': '7', '८': '8', '९': '9' };
+  const t = String(text).toLowerCase()
+    .replace(/[०-९]/g, d => devMap[d])
+    .replace(/₹/g, ' ')
+    .replace(/,/g, '');
+  const tokens = t.split(/\s+/).filter(Boolean).map(w => w.replace(/[^a-z0-9.\u0900-\u097F]/g, ''));
+
+  /* 1) Digits (+ multiplier): "₹2,000", "2 hazaar", "1.5 lakh" */
+  const candidates = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const m = tokens[i].match(/^(\d+(?:\.\d+)?)[a-z]*$/);
+    if (!m) continue;
+    let v = Number(m[1]);
+    const next = tokens[i + 1] || '';
+    if (VOICE_MULT[next]) { v *= VOICE_MULT[next]; i++; }
+    if (v > 0) candidates.push(v);
+  }
+  if (candidates.length) return Math.round(Math.max(...candidates));
+
+  /* 2) Number words: "do hazaar panch sau", "पंद्रह हज़ार", "five hundred" */
+  let total = 0, current = 0, found = false;
+  tokens.forEach(w => {
+    const v = NUM_WORDS[w];
+    if (v === undefined) return;
+    found = true;
+    if (v >= 100) { total += (current || 1) * v; current = 0; } /* sau/hazaar/lakh — flush */
+    else current += v;
+  });
+  total += current;
+  if (!found || total <= 0) return null;
+  if (total < 100 && !Number.isInteger(total)) total *= 1000; /* "dedh" = 1500 */
+  return Math.round(total);
+}
+
+function detectCategory(text) {
+  const t = String(text || '').toLowerCase();
+  for (const pair of CAT_KEYWORDS) {
+    for (const kw of pair[1]) if (t.includes(kw)) return pair[0];
+  }
+  return 'others';
+}
+
+function parseVoiceInput(text) {
+  const raw = String(text || '').trim();
+  return { amount: extractAmount(raw), category: detectCategory(raw), note: raw.length > 60 ? raw.slice(0, 60) : raw, raw };
+}
+
+/* --- Mic wiring (Web Speech API — Chrome/Edge) --- */
+let recog = null;
+let voiceLang = 'hi-IN';
+
+function voiceSupported() {
+  return typeof window.SpeechRecognition === 'function' || typeof window.webkitSpeechRecognition === 'function';
+}
+
+function startVoice() {
+  if (!voiceSupported()) { toast('Ye browser voice input support nahi karta — Chrome/Edge mein try karein', 'warn'); return; }
+  if (recog) { try { recog.stop(); } catch (e) {} recog = null; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recog = new SR();
+  recog.lang = voiceLang;
+  recog.interimResults = true;
+  recog.maxAlternatives = 1;
+  const btn = document.getElementById('micBtn');
+  const status = document.getElementById('voiceStatus');
+  const preview = document.getElementById('voicePreview');
+  if (btn) { btn.classList.add('listening'); btn.textContent = '⏹️'; }
+  if (status) status.textContent = '🎙️ Sun raha hoon... boliye! (e.g. "aaj paanch sau ki sabzi")';
+  if (preview) preview.classList.add('hidden');
+  recog.onresult = ev => {
+    let finalTxt = '', interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
+    }
+    if (status && interim) status.textContent = '🗣️ ' + interim;
+    if (finalTxt) applyVoiceResult(finalTxt);
+  };
+  recog.onerror = ev => {
+    const msgs = {
+      'not-allowed': 'Mic ki permission nahi mili — browser settings mein allow karein',
+      'no-speech': 'Kuch sunayi nahi diya — dobara dabakar boliye',
+      'audio-capture': 'Mic nahi mila — check karein mic laga hai?',
+      'network': 'Network issue — internet check karein'
+    };
+    toast(msgs[ev.error] || 'Voice error: ' + ev.error, 'error');
+  };
+  recog.onend = () => {
+    if (btn) { btn.classList.remove('listening'); btn.textContent = '🎤'; }
+    if (status && status.textContent.indexOf('🎙️') === 0) status.innerHTML = 'Dabayein aur boliye — <i>"aaj paanch sau ki sabzi"</i>';
+    recog = null;
+  };
+  try { recog.start(); } catch (e) { toast('Voice start nahi ho paya', 'error'); }
+}
+
+function applyVoiceResult(text) {
+  const res = parseVoiceInput(text);
+  const amt = document.getElementById('expAmount');
+  const cat = document.getElementById('expCat');
+  const note = document.getElementById('expNote');
+  const status = document.getElementById('voiceStatus');
+  const preview = document.getElementById('voicePreview');
+  if (res.amount) {
+    if (amt) amt.value = res.amount;
+    if (cat) cat.value = res.category;
+    if (note) note.value = res.note;
+    const c = catById(res.category);
+    if (status) status.textContent = '✅ Samajh aa gaya — form bhar diya, neeche check karke Add dabayein';
+    if (preview) {
+      preview.innerHTML = `<span>Samjha: ${c.icon} <b>${c.name}</b> · <b>${fmt(res.amount)}</b></span>
+        <button class="btn primary sm" data-action="voice-apply">✔ Add Karein</button>`;
+      preview.classList.remove('hidden');
+    }
+  } else {
+    if (status) status.textContent = '🤔 Amount samajh nahi aaya — "paanch sau ki sabzi" jaise boliye';
+    if (preview) preview.classList.add('hidden');
+  }
+}
+
+/* ============================================================
+   GOALS — sapne, pakke kadam 🎯
+   ============================================================ */
+const GOAL_ICONS = ['📱', '💻', '🚗', '🏍️', '🏠', '✈️', '💍', '🎓', '🎁', '💵', '👶', '🙏'];
+
+function activeGoals() { return (state.goals || []).filter(g => (g.saved || 0) < g.target); }
+
+function goalMonthly(goal) {
+  const remaining = Math.max(0, goal.target - (goal.saved || 0));
+  if (remaining <= 0) return 0;
+  let months = 6; /* deadline nahi to 6 mahine ka default */
+  if (goal.deadline) {
+    const p = String(goal.deadline).split('-').map(Number);
+    const end = new Date(p[0], p[1] - 1, p[2]);
+    const days = Math.ceil((end - new Date()) / 86400000);
+    months = Math.max(1, Math.ceil(Math.max(days, 1) / 30.44));
+  }
+  return Math.ceil(remaining / months);
+}
+
+function goalDeadlineLabel(goal) {
+  if (!goal.deadline) return '6 mahine (default)';
+  const p = String(goal.deadline).split('-').map(Number);
+  return new Date(p[0], p[1] - 1, p[2]).toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+function goalsCardHtml() {
+  const goals = state.goals || [];
+  const rows = goals.map(g => {
+    const p = Math.min(100, (g.saved || 0) / g.target * 100);
+    const done = (g.saved || 0) >= g.target;
+    return `
+    <div class="goal-row">
+      <div class="row between">
+        <div class="row gap" style="min-width:0">
+          <span class="goal-ico">${g.icon || '🎯'}</span>
+          <div style="min-width:0">
+            <div class="goal-name">${esc(g.name)}</div>
+            <div class="small muted">${fmt(g.saved || 0)} / ${fmt(g.target)} · ${goalDeadlineLabel(g)}</div>
+          </div>
+        </div>
+        ${done ? '<span class="chip good">🏆 Poora!</span>' : `<span class="chip info">${fmt(goalMonthly(g))}/mo chahiye</span>`}
+      </div>
+      <div class="progress"><div class="progress-fill ${done ? '' : 'warn'}" style="width:${p}%"></div></div>
+      ${done ? '' : `<div class="row gap" style="justify-content:flex-end">
+        <button class="btn ghost sm" data-action="goal-contrib" data-id="${g.id}">➕ Paisa Jodo</button>
+        <button class="delbtn" data-action="goal-del" data-id="${g.id}" title="Goal delete">🗑️</button>
+      </div>`}
+    </div>`;
+  }).join('');
+  return `
+  <div class="card">
+    <div class="card-title">🎯 Aapke Goals <span class="chip plain">${goals.length} goal${goals.length === 1 ? '' : 's'}</span></div>
+    ${rows || '<div class="empty">Koi goal nahi. "Naya Goal" banayein — jaise 📱 phone, 🚗 gaadi, ✈️ trip — app khud batayega mahine kitna jodna hai!</div>'}
+    <button class="btn gold block mt8" data-action="goal-new">➕ Naya Goal Banayein</button>
+  </div>`;
+}
+
+function goalsPlanCardHtml(leftover) {
+  const goals = state.goals || [];
+  if (!goals.length) return '';
+  const rows = goals.map(g => {
+    const done = (g.saved || 0) >= g.target;
+    const need = goalMonthly(g);
+    const p = Math.min(100, (g.saved || 0) / g.target * 100);
+    return `
+    <div class="goal-row">
+      <div class="row between">
+        <div class="row gap" style="min-width:0">
+          <span class="goal-ico">${g.icon || '🎯'}</span>
+          <div style="min-width:0">
+            <div class="goal-name">${esc(g.name)}</div>
+            <div class="small muted">${done ? '🏆 Poora ho gaya — badhai ho!' : 'Is month ' + fmt(need) + ' jodo · target ' + goalDeadlineLabel(g)}</div>
+          </div>
+        </div>
+        <span class="chip ${done ? 'good' : 'info'}">${pct(p)}</span>
+      </div>
+      <div class="progress"><div class="progress-fill" style="width:${p}%"></div></div>
+    </div>`;
+  }).join('');
+  const need = sum(activeGoals().map(goalMonthly));
+  let verdict;
+  if (leftover <= 0) {
+    verdict = `<div class="tip tip-warn mt8"><span class="tip-ico">⚠️</span><div class="tip-text">Goals ke liye ${fmt(need)}/mahina chahiye, par plan mein kuch bacha hi nahi. Kharche kaat kar goal fund nikaalein!</div></div>`;
+  } else if (need <= leftover) {
+    verdict = `<div class="tip tip-good mt8"><span class="tip-ico">✅</span><div class="tip-text">Badhiya! Bacha hua ${fmt(leftover)} mein se ${fmt(need)} goals ke liye — uske baad bhi ${fmt(leftover - need)} invest ke liye bachega.</div></div>`;
+  } else {
+    verdict = `<div class="tip tip-warn mt8"><span class="tip-ico">🎯</span><div class="tip-text">Goals ke liye ${fmt(need)}/mahina chahiye, par bacha sirf ${fmt(leftover)} hai. Deadline badhaiye ya target thoda chhota karein — warna goal adhoora rahega.</div></div>`;
+  }
+  return `
+  <div class="card">
+    <div class="card-title">🎯 Goals Ka Plan</div>
+    ${rows}
+    ${verdict}
+  </div>`;
+}
+
+function openGoalModal() {
+  const m = document.getElementById('goalModal');
+  m.innerHTML = `
+  <div class="wiz-head">
+    <div class="wiz-step">🎯 NAYA GOAL</div>
+    <h2>Sapna Pakka Karein!</h2>
+    <p class="muted">Kya chahiye — phone, gaadi, trip? App khud calculate karega ki mahine kitna jodna hai.</p>
+  </div>
+  <form id="goalForm">
+    <div class="field">
+      <label>Icon chunein</label>
+      <div class="emoji-row">${GOAL_ICONS.map((ic, i) => `<label class="emoji-chip"><input type="radio" name="gicon" value="${ic}" ${i === 0 ? 'checked' : ''}><span>${ic}</span></label>`).join('')}</div>
+    </div>
+    <div class="field">
+      <label>Goal ka naam</label>
+      <input type="text" id="goalName" maxlength="30" required placeholder="e.g. Naya Phone">
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label>Kitna paisa chahiye? (₹)</label>
+        <input type="number" id="goalTarget" min="100" step="500" inputmode="numeric" required placeholder="e.g. 40000">
+      </div>
+      <div class="field">
+        <label>Kab tak? (optional)</label>
+        <input type="date" id="goalDeadline">
+      </div>
+    </div>
+    <div class="field">
+      <label>Ab tak kitna jama hai? (₹, optional)</label>
+      <input type="number" id="goalSaved" min="0" step="500" inputmode="numeric" value="0">
+    </div>
+    <button class="btn primary block" type="submit">🎯 Goal Banayein</button>
+    <button class="btn ghost sm block mt8" type="button" data-action="close-goal">Cancel</button>
+  </form>`;
+  document.getElementById('goalOverlay').classList.remove('hidden');
+}
+
+function saveGoalForm(form) {
+  const icon = (form.querySelector('input[name="gicon"]:checked') || {}).value || '🎯';
+  const name = form.querySelector('#goalName').value.trim();
+  const target = Number(form.querySelector('#goalTarget').value);
+  const dl = form.querySelector('#goalDeadline').value;
+  const saved = Number(form.querySelector('#goalSaved').value) || 0;
+  if (!name) { toast('Goal ka naam likhein', 'error'); return; }
+  if (!target || target < 100) { toast('Target kam se kam ₹100 hona chahiye', 'error'); return; }
+  state.goals = state.goals || [];
+  const goal = { id: 'g' + Date.now() + Math.floor(Math.random() * 999), icon, name, target, saved: Math.max(0, Math.min(saved, target)), deadline: dl || '' };
+  state.goals.push(goal);
+  saveState();
+  closeGoalModal();
+  renderAll();
+  toast('🎯 Goal ban gaya: ' + name + ' — har mahine ' + fmt(goalMonthly(goal)) + ' jodna hai!', 'success');
+}
+
+function openContribModal(id) {
+  const g = (state.goals || []).find(x => x.id === id);
+  if (!g) return;
+  const m = document.getElementById('goalModal');
+  m.innerHTML = `
+  <div class="wiz-head">
+    <div class="wiz-step">➕ PAISA JODO</div>
+    <h2>${g.icon} ${esc(g.name)}</h2>
+    <p class="muted">Ab tak ${fmt(g.saved || 0)} / ${fmt(g.target)} jama hai. ${g.saved >= g.target ? 'Ye goal already poora hai! 🏆' : 'Is month kitna joda?'}</p>
+  </div>
+  <form id="contribForm" data-id="${g.id}">
+    <div class="field">
+      <label>Kitna paisa joda? (₹)</label>
+      <input type="number" id="contribAmt" min="1" step="100" inputmode="numeric" required placeholder="e.g. 2000" autofocus>
+    </div>
+    <button class="btn primary block" type="submit">➕ Jodo</button>
+    <button class="btn ghost sm block mt8" type="button" data-action="close-goal">Cancel</button>
+  </form>`;
+  document.getElementById('goalOverlay').classList.remove('hidden');
+}
+
+function addContribution(form) {
+  const id = form.getAttribute('data-id');
+  const g = (state.goals || []).find(x => x.id === id);
+  if (!g) return;
+  const amt = Number(form.querySelector('#contribAmt').value);
+  if (!amt || amt <= 0) { toast('Sahi amount daalein', 'error'); return; }
+  const before = g.saved || 0;
+  g.saved = before + amt;
+  saveState();
+  closeGoalModal();
+  renderAll();
+  if (before < g.target && g.saved >= g.target) toast('🏆 GOAL COMPLETE: ' + g.name + '! Badhai ho — agla goal banayein! 🎉', 'success');
+  else toast('✔ ' + fmt(amt) + ' jama ho gaya — ab ' + fmt(Math.max(0, g.target - g.saved)) + ' baaki', 'success');
+}
+
+function deleteGoal(id) {
+  const g = (state.goals || []).find(x => x.id === id);
+  showConfirm('Goal "' + (g ? g.name : '') + '" delete kar dein?', () => {
+    state.goals = (state.goals || []).filter(x => x.id !== id);
+    saveState();
+    renderAll();
+    toast('Goal delete ho gaya', 'success');
+  });
+}
+
+function closeGoalModal() { document.getElementById('goalOverlay').classList.add('hidden'); }
+
+/* ============================================================
    RENDERING
    ============================================================ */
 function renderAll() {
@@ -143,6 +526,7 @@ function switchView(v) {
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   closeWizard();
   hideConfirm();
+  closeGoalModal();
   renderAll();
   window.scrollTo({ top: 0 });
 }
@@ -171,6 +555,7 @@ function noDataCard() {
     <div class="hero-actions">
       <button class="btn primary" data-action="open-wizard">💵 Salary Received — Shuru Karein</button>
       ${Object.keys(state.months).length === 0 ? '<button class="btn ghost" data-action="load-demo">🎬 Demo Data Dekhein (Sample)</button>' : ''}
+      <button class="btn gold" data-action="goal-new">🎯 Naya Goal Banayein (Phone, Gaadi, Trip...)</button>
     </div>
   </div>`;
 }
@@ -278,6 +663,8 @@ function renderHome() {
     ${catRows || '<div class="empty">Koi category plan nahi hai — "Plan Edit" se add karein.</div>'}
   </div>
 
+  ${goalsCardHtml()}
+
   ${tipOfDay ? `
   <div class="card">
     <div class="card-title">💡 Aaj Ki Salah</div>
@@ -343,6 +730,20 @@ function renderExpense() {
     .join(' ');
 
   el.innerHTML = `
+  <div class="card">
+    <div class="card-title">🎤 Bolkar Kharcha Add Karein
+      <button class="chip plain voice-lang" data-action="voice-lang" title="Voice ki bhasha badlein">${voiceLang === 'hi-IN' ? '🇮🇳 हिंदी' : '🇬🇧 English'}</button>
+    </div>
+    ${voiceSupported() ? `
+    <div class="voice-box">
+      <button class="mic-btn" id="micBtn" data-action="voice-toggle" title="Dabayein aur boliye">🎤</button>
+      <div class="voice-status" id="voiceStatus">Dabayein aur boliye — <i>"aaj paanch sau ki sabzi"</i></div>
+    </div>
+    <div class="voice-preview hidden" id="voicePreview"></div>
+    <div class="small muted mt8">Examples: "do hazaar petrol" · "zomato pe char sau" · "mahine ka kiraya das hazaar" · "dawai ke pachaanve"</div>
+    ` : `<div class="small muted">Ye browser voice input support nahi karta (Chrome/Edge mein chalega) — koi baat nahi, neeche typing wala form hai. 📝</div>`}
+  </div>
+
   <div class="card">
     <div class="card-title">➕ Kharcha Add Karein <span class="chip info">${monthLabel(selectedMonth)}</span></div>
     <form id="expForm">
@@ -716,6 +1117,8 @@ function renderAdvice() {
     <div class="small muted mt8">💡 Har mahine yahi routine: salary aaye → bacha hua auto-transfer invest ho jaye. "Pehle invest, phir kharch" — ulti aadat hi garibi ki jad hai!</div>
   </div>
 
+  ${goalsPlanCardHtml(leftover)}
+
   <div class="card">
     <div class="card-title">⚡ Kam Waqt Mein Profit — Sahi Options</div>
     <div class="table-wrap">
@@ -877,6 +1280,22 @@ function generateInsights(key) {
     tips.push({ tone: 'bad', icon: '🚨', title: 'Salary se zyada kharch ho gaya!', text: 'Ab tak ' + fmt(sTotal) + ' kharch hai, salary ' + fmt(salary) + '. Agla mahina plan ke saath shuru karein — warna credit card/loan ka jaal shuru ho jayega.' });
   }
 
+  /* 9. Goals */
+  const goals = state.goals || [];
+  const act = goals.filter(g => (g.saved || 0) < g.target);
+  if (act.length) {
+    const g0 = act[0];
+    tips.push({
+      tone: 'info', icon: '🎯',
+      title: 'Goal: ' + g0.name + ' — ' + fmt(goalMonthly(g0)) + '/mahina',
+      text: 'Target ' + fmt(g0.target) + ', ab tak ' + fmt(g0.saved || 0) + ' jama. Har mahine itna is goal ke liye ALAG rakhein' + (act.length > 1 ? ' (aur ' + (act.length - 1) + ' goal baaki hain)' : '') + '.'
+    });
+    const need = sum(act.map(goalMonthly));
+    if (need > leftover && leftover > 0) {
+      tips.push({ tone: 'warn', icon: '🎯', title: 'Goals vs Bachat ka hisaab', text: 'Sab goals ke liye ' + fmt(need) + '/mahina chahiye, par plan ke hisaab se sirf ' + fmt(leftover) + ' bach raha hai. Deadline badhaiye ya targets chhote karein.' });
+    }
+  }
+
   return tips;
 }
 
@@ -1013,6 +1432,12 @@ function wizardStep3() {
   }
 
   const alloc = buildAllocation(leftover);
+  const goalsLine = activeGoals().length ? `
+  <div class="tip tip-info" style="margin-bottom:14px">
+    <span class="tip-ico">🎯</span>
+    <div><div class="tip-title">Goals yaad hain?</div>
+    <div class="tip-text">${activeGoals().map(g => esc(g.name) + ' (' + fmt(goalMonthly(g)) + '/mo)').join(' · ')} — inke liye bhi bachat mein se alag paisa rakhein.</div></div>
+  </div>` : '';
 
   return `
   <div class="wiz-head">
@@ -1027,6 +1452,7 @@ function wizardStep3() {
   </div>
   <div class="verdict center muted">${verdict}</div>
   ${recap}
+  ${goalsLine}
   <div class="alloc-grid">
     ${alloc.map(a => `
     <div class="alloc-card">
@@ -1118,7 +1544,7 @@ function renderSettings() {
   </div>
 
   <div class="card">
-    <div class="card-title">💾 Data — ${monthCount} mahine ka data saved hai</div>
+    <div class="card-title">💾 Data — ${monthCount} mahine · ${(state.goals || []).length} goals</div>
     <div class="stack">
       <div class="small muted">Sab data sirf aapke browser (localStorage) mein hai — koi server nahi, koi tracking nahi. Backup ke liye export kar lein.</div>
       <div class="row gap" style="flex-wrap:wrap">
@@ -1136,7 +1562,8 @@ function renderSettings() {
     <div class="small muted stack">
       <div>💰 <b>PaisaGuru</b> — Monthly Expense Tracker & Smart Saving Advisor</div>
       <div>Salary aaye → plan banaye → jo bache use invest kare → har mahine analysis se better kare. Ye poori app offline chalti hai, data aapke paas rehta hai.</div>
-      <div>Version 1.0 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
+      <div>🎤 Voice input (Chrome/Edge) · 🎯 Savings Goals · 📊 Monthly analysis · 💡 Investment salah</div>
+      <div>Version 1.1 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
     </div>
   </div>
   ${disclaimerHtml()}`;
@@ -1179,7 +1606,7 @@ function importData(file) {
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || typeof parsed !== 'object' || !parsed.months) throw new Error('Is file mein PaisaGuru ka data nahi hai');
-      state = { months: parsed.months, settings: Object.assign(defaultState().settings, parsed.settings || {}) };
+      state = { months: parsed.months, goals: Array.isArray(parsed.goals) ? parsed.goals : [], settings: Object.assign(defaultState().settings, parsed.settings || {}) };
       saveState();
       selectedMonth = monthKey(new Date());
       renderAll();
@@ -1216,7 +1643,7 @@ function loadDemoData() {
   /* Current month ke expenses sirf aaj tak (realistic pace) */
   const onlyTillToday = arr => arr.filter(e => Number(e.date.slice(8, 10)) <= todayD);
 
-  const state2 = { months: {}, settings: { name: '', emergencyDone: false, emergencySaved: 5000 } };
+  const state2 = { months: {}, goals: [{ id: 'demogoal1', icon: '📱', name: 'Naya Phone', target: 40000, saved: 12000, deadline: addMonths(cur, 4) + '-28' }], settings: { name: '', emergencyDone: false, emergencySaved: 5000 } };
 
   /* ---- Mahina -2: normal month ---- */
   state2.months[m2] = {
@@ -1334,6 +1761,20 @@ document.addEventListener('click', e => {
     case 'wiz-back': wizardBack(); break;
     case 'wiz-complete': wizardComplete(); break;
     case 'del-expense': deleteExpense(t.dataset.id); break;
+    case 'voice-toggle':
+      if (recog) { try { recog.stop(); } catch (err) {} }
+      else startVoice();
+      break;
+    case 'voice-lang':
+      voiceLang = voiceLang === 'hi-IN' ? 'en-IN' : 'hi-IN';
+      renderAll();
+      toast('Voice language: ' + (voiceLang === 'hi-IN' ? 'हिंदी 🇮🇳' : 'English 🇬🇧'), 'success');
+      break;
+    case 'voice-apply': handleExpenseSubmit(document.getElementById('expForm')); break;
+    case 'goal-new': openGoalModal(); break;
+    case 'goal-contrib': openContribModal(t.dataset.id); break;
+    case 'goal-del': deleteGoal(t.dataset.id); break;
+    case 'close-goal': closeGoalModal(); break;
     case 'toggle-emergency': toggleEmergency(); break;
     case 'export-data': exportData(); break;
     case 'click-import': {
@@ -1362,6 +1803,8 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'expForm') handleExpenseSubmit(e.target);
   else if (e.target.id === 'wizSalaryForm') wizardNext();
   else if (e.target.id === 'settingsForm') saveSettingsForm();
+  else if (e.target.id === 'goalForm') saveGoalForm(e.target);
+  else if (e.target.id === 'contribForm') addContribution(e.target);
 });
 
 document.addEventListener('input', e => {
@@ -1382,7 +1825,7 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeWizard(); hideConfirm(); }
+  if (e.key === 'Escape') { closeWizard(); hideConfirm(); closeGoalModal(); }
 });
 
 document.getElementById('wizardOverlay').addEventListener('click', e => {
@@ -1390,6 +1833,9 @@ document.getElementById('wizardOverlay').addEventListener('click', e => {
 });
 document.getElementById('confirmOverlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) hideConfirm();
+});
+document.getElementById('goalOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeGoalModal();
 });
 
 /* ---------------- Init ---------------- */

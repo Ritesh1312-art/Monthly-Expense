@@ -33,6 +33,16 @@ Bacha hua paisa dekh kar app batati hai:
 - 🏃 Kharche ki speed ka warning — "mahine ka 25% beetā hai, kharcha 40% ho chuka!"
 - 📈 6 mahine ka trend chart
 
+### Plus 🎤 Voice Input — Bolkar Kharcha Add Karein
+Mic dabayein aur boliye — **"aaj paanch sau ki sabzi"**, **"do hazaar petrol"**, **"महीने का किराया दस हज़ार"** — app khud amount nikaalega, category pehchanega (🛒 Grocery, 🚗 Transport, 🏠 Rent...) aur form bhar dega. Hinglish, देवनागरी aur English — teeno samajh aata hai. *(Chrome/Edge mein best chalta hai)*
+
+### Plus 🎯 Savings Goals — Sapne Pakke Kadam
+Phone chahiye? Gaadi? Trip? Goal banayein — app khud calculate karega:
+- **"Naya Phone ₹40,000 — 4 mahine mein" → har mahine ₹7,000 jodo**
+- Progress bar, contribution add karna, complete hone par 🏆 celebration
+- Salah tab mein: "bacha hua ₹X mein se goals ke ₹Y — phir bhi ₹Z invest ke liye bachega"
+- Goals vs bachat ka warning jab deadline tight ho
+
 ### Plus 🧾 Kharcha Tracking
 Mahine bhar har kharcha add karein (category + note + date). Budget cross hone par turant warning milti hai.
 
@@ -44,13 +54,15 @@ Mahine bhar har kharcha add karein (category + note + date). Budget cross hone p
 |---|---|
 | 💵 Salary Setup Wizard | Salary daalte hi 3-step guided planning (Salary → Kharcha Plan → Investment Plan) |
 | 🗺️ Smart Suggestions | Naye mahine ka plan pichle mahine ke kharche se auto-suggest |
+| 🎤 Voice Input | Bol kar kharcha add — Hinglish/हिंदी/English number words + auto category detect |
+| 🎯 Savings Goals | Goal banaiye, app batayega mahine kitna jodna hai; progress + complete celebration |
 | 🧾 Expense Tracking | Category-wise kharcha, notes, budget alerts, delete |
 | 📊 Monthly Report | Plan vs actual, MoM comparison, saving grade, 6-month trend |
-| 🤖 Insights Engine | 8+ rules wala analysis — overspend, pace, wants vs needs, emergency fund |
+| 🤖 Insights Engine | 10+ rules wala analysis — overspend, pace, wants vs needs, emergency fund, goals |
 | 💡 Investment Salah | Emergency-fund-first allocation, SIP projections, quick-return options, 50-30-20 rule check, tax tips |
 | 🛡️ Privacy-first | Sab data **aapke browser** (localStorage) mein — koi server nahi, koi login nahi |
 | 📦 Backup | JSON export / import |
-| 🎬 Demo Data | Ek click mein 3 mahine ka sample data — app turant samajh aayegi |
+| 🎬 Demo Data | Ek click mein 3 mahine ka sample data + ek goal — app turant samajh aayegi |
 
 ## 🚀 Kaise Chalayein
 
@@ -89,7 +101,7 @@ Ye app **general financial education** ke liye hai — personalized investment a
 - [ ] Shared household budget (family ke saath ek hi tracker)
 - [ ] PWA — phone mein app jaisa install ho
 - [ ] Advanced charts aur year-wise reports
-- [ ] Goal-based savings (ghar, gaadi, shaadi)
+- [ ] Debt/EMI manager — "pehle kaunsi EMI band karein" wali salah
 
 ---
 

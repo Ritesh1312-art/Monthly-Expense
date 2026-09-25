@@ -345,6 +345,41 @@ table.table tr:last-child td { border-bottom: none; }
 .toast.warn { background: #b45309; }
 .toast.out { opacity: 0; transition: opacity .3s; }
 
+/* ---------------- Voice input ---------------- */
+.voice-box { display: flex; align-items: center; gap: 14px; background: #f4faf8; border: 1.5px dashed #b5dccf; border-radius: 14px; padding: 14px; }
+.mic-btn {
+  width: 58px; height: 58px; border-radius: 50%; border: none; font-size: 26px; cursor: pointer;
+  background: linear-gradient(135deg, #0d7a68, #149d7e); color: #fff; flex-shrink: 0;
+  box-shadow: 0 8px 20px -8px rgba(13, 122, 104, .55); transition: transform .15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.mic-btn:active { transform: scale(.94); }
+.mic-btn.listening { background: linear-gradient(135deg, #e5484d, #f47b7f); animation: pulse 1.2s infinite; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(229, 72, 77, .45); }
+  70% { box-shadow: 0 0 0 16px rgba(229, 72, 77, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(229, 72, 77, 0); }
+}
+.voice-status { font-size: 14px; font-weight: 600; min-height: 20px; }
+.voice-preview {
+  margin-top: 10px; background: var(--brand-light); border-radius: 12px; padding: 10px 12px;
+  font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.voice-lang { cursor: pointer; border: none; font-family: inherit; font-size: 11.5px; }
+
+/* ---------------- Goals ---------------- */
+.goal-row { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.goal-row:last-child { border-bottom: none; }
+.goal-ico { font-size: 22px; }
+.goal-name { font-weight: 800; font-size: 14px; }
+.emoji-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.emoji-chip input { display: none; }
+.emoji-chip span {
+  display: inline-block; font-size: 22px; padding: 6px 10px; border-radius: 12px;
+  border: 1.5px solid var(--line); cursor: pointer; background: #fbfdff; transition: border .15s, background .15s;
+}
+.emoji-chip input:checked + span { border-color: var(--brand); background: var(--brand-light); box-shadow: 0 0 0 2px rgba(13, 122, 104, .15); }
+
 /* ---------------- Utility ---------------- */
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .mt8 { margin-top: 8px; }
