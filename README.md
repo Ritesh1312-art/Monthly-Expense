@@ -1,1 +1,96 @@
-# Monthly-Expense
+# 💰 PaisaGuru — Monthly Expense Tracker & Smart Saving Advisor
+
+> **Problem:** Logo ki salary aati hai aur paisa ese hi kharch ho jaata hai — na saving hoti hai, na samajh aata hai ki paisa kahan invest karein.
+>
+> **Solution:** PaisaGuru — ek app jo salary aane par **khud poochhti hai** ki paisa kaha-kaha kharch hoga, phir jo bacha usse **invest karne ki salah** deti hai, aur har mahine **pichle mahine se compare karke** batati hai ki is baar kahan paise save ho sakte hain.
+
+---
+
+## 🔄 Ye Kaaise Kaam Karti Hai? (The Working)
+
+### Step 1 — 💵 Salary Received
+Mahine ki salary aane par app mein amount daalein (aur date). Bas — aapki planning shuru.
+
+### Step 2 — 🗺️ App Khud Poochhegi: "Paisa Kaha-Kaha Kharch Hoga?"
+App har category ka andaza maangti hai — Grocery, Medical, Shopping, Kiraya, Bills, Transport, EMI, Entertainment, etc.
+- Pichle mahine ke kharche se **suggestion auto-bhar jaate hain** 🤖
+- Live dikhta rahega: *Salary − Plan = Kitna bacha*
+
+### Step 3 — 💡 Jo Bacha, Uski Investment Salah
+Bacha hua paisa dekh kar app batati hai:
+- 🛡️ **Emergency fund** pehle (3-6 mahine ka kharcha, liquid fund/savings mein)
+- 📈 **Index Fund SIP** (long term ~12% average)
+- 🏦 **FD / T-Bill / RD** (kam waqt ke liye, safe 6-7%)
+- 🥇 **Gold (SGB)** (inflation se bachav)
+- 🧾 **ELSS / PPF** (Section 80C mein tax bachat)
+- ⚡ **"Kam waqt mein profit"** ke sahi options ki table — aur ye sachai ki *"1 mahine mein paisa double" nahi hota, jo bole wo scam hai*
+
+### Step 4 — 📊 Har Mahine Ka Vishleshan (Analysis Report)
+- ✅ Plan vs Asli kharcha — category-wise progress bars
+- 🔄 **Pichle mahine se comparison**: "Shopping mein pichle mahine ₹12,600 gaya tha, is baar ab tak ₹3,100 — wahin se sabse zyada bachat ho rahi hai!"
+- 🏆 **Saving Grade** (A+ se D tak) — salary ka kitna % bach raha hai
+- 🎯 **"Is baar yahan paise save karein"** — app khud batati hai kaunsi category kassni chahiye
+- 🏃 Kharche ki speed ka warning — "mahine ka 25% beetā hai, kharcha 40% ho chuka!"
+- 📈 6 mahine ka trend chart
+
+### Plus 🧾 Kharcha Tracking
+Mahine bhar har kharcha add karein (category + note + date). Budget cross hone par turant warning milti hai.
+
+---
+
+## ✨ Features
+
+| Feature | Kya karta hai |
+|---|---|
+| 💵 Salary Setup Wizard | Salary daalte hi 3-step guided planning (Salary → Kharcha Plan → Investment Plan) |
+| 🗺️ Smart Suggestions | Naye mahine ka plan pichle mahine ke kharche se auto-suggest |
+| 🧾 Expense Tracking | Category-wise kharcha, notes, budget alerts, delete |
+| 📊 Monthly Report | Plan vs actual, MoM comparison, saving grade, 6-month trend |
+| 🤖 Insights Engine | 8+ rules wala analysis — overspend, pace, wants vs needs, emergency fund |
+| 💡 Investment Salah | Emergency-fund-first allocation, SIP projections, quick-return options, 50-30-20 rule check, tax tips |
+| 🛡️ Privacy-first | Sab data **aapke browser** (localStorage) mein — koi server nahi, koi login nahi |
+| 📦 Backup | JSON export / import |
+| 🎬 Demo Data | Ek click mein 3 mahine ka sample data — app turant samajh aayegi |
+
+## 🚀 Kaise Chalayein
+
+**Tarika 1 (sabse aasan):** `index.html` par double-click karein — bas! Koi install nahi, koi internet nahi (offline bhi chalta hai).
+
+**Tarika 2 (local server):**
+```bash
+python3 -m http.server 8000
+# phir browser mein: http://localhost:8000
+```
+
+## 🛠️ Tech Stack
+
+- **HTML + CSS + Vanilla JavaScript** — zero dependencies, zero build step, zero tracking
+- Data: browser `localStorage`
+- Charts: pure CSS (koi library nahi)
+- Mobile-first responsive design — phone par bhi, desktop par bhi
+
+## 📁 Structure
+
+```
+Monthly-Expense/
+├── index.html   # App ka structure (views, wizard modal, navigation)
+├── style.css    # Puri styling — mobile-first, modern
+├── app.js       # Logic: state, wizard, insights engine, investment salah
+└── README.md
+```
+
+## ⚠️ Disclaimer
+
+Ye app **general financial education** ke liye hai — personalized investment advice nahi. FD/SIP/mutual funds ke real rates time ke saath badalte hain. Bada investment karne se pehle SEBI-registered financial advisor se salah zaroor lein.
+
+## 🗺️ Future Ideas
+
+- [ ] Bank SMS se automatic expense import
+- [ ] Shared household budget (family ke saath ek hi tracker)
+- [ ] PWA — phone mein app jaisa install ho
+- [ ] Advanced charts aur year-wise reports
+- [ ] Goal-based savings (ghar, gaadi, shaadi)
+
+---
+
+*Banaya gaya ❤️ se — un logon ke liye jo salary aate hi paisa kharch kar dete hain, aur month end mein sochte hain "paise gaye kahan?" 😄*

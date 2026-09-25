@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>PaisaGuru — Monthly Expense Tracker & Smart Saving Advisor</title>
+  <meta name="description" content="Salary aane pe kharcha plan karo, bacha paisa invest karo, har month analysis se paise bachao." />
+  <meta name="theme-color" content="#0b6b5a" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">💰</span>
+      <span class="brand-name">PaisaGuru</span>
+    </div>
+    <div class="month-nav">
+      <button class="iconbtn" data-action="prev-month" title="Pichla mahina">◀</button>
+      <div class="month-label" id="monthLabel"></div>
+      <button class="iconbtn" data-action="next-month" title="Agla mahina">▶</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="view" id="view-home"></section>
+    <section class="view hidden" id="view-expense"></section>
+    <section class="view hidden" id="view-report"></section>
+    <section class="view hidden" id="view-advice"></section>
+    <section class="view hidden" id="view-settings"></section>
+  </main>
+
+  <nav class="bottomnav" id="bottomnav">
+    <button class="navbtn active" data-action="goto-view" data-view="home"><span class="nav-ico">🏠</span><span class="nav-txt">Home</span></button>
+    <button class="navbtn" data-action="goto-view" data-view="expense"><span class="nav-ico">🧾</span><span class="nav-txt">Kharcha</span></button>
+    <button class="navbtn" data-action="goto-view" data-view="report"><span class="nav-ico">📊</span><span class="nav-txt">Report</span></button>
+    <button class="navbtn" data-action="goto-view" data-view="advice"><span class="nav-ico">💡</span><span class="nav-txt">Salah</span></button>
+    <button class="navbtn" data-action="goto-view" data-view="settings"><span class="nav-ico">⚙️</span><span class="nav-txt">Settings</span></button>
+  </nav>
+
+  <!-- Salary → Planning → Result wizard -->
+  <div class="modal-overlay hidden" id="wizardOverlay">
+    <div class="modal" id="wizardModal"></div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div class="modal-overlay hidden" id="confirmOverlay">
+    <div class="modal confirm">
+      <p id="confirmMsg"></p>
+      <div class="row gap">
+        <button class="btn ghost block" data-action="confirm-no">Nahi</button>
+        <button class="btn danger block" data-action="confirm-yes">Haan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastWrap"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
