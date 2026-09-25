@@ -63,11 +63,15 @@ const catById = id => CATEGORIES.find(c => c.id === id) || { id, name: id, icon:
    guarantee nahi. Invest se pehle khud verify karein.
    ============================================================ */
 const FINANCE_DATA = {
+  schemaVersion: 1,
+  manualVerifiedOn: '25 Sep 2026',
+  manualVerifiedOnISO: '2026-09-25',
   verifiedOn: '25 Sep 2026',
+  auto: null,
   repoRate: '5.25% (RBI, Sep 2026)',
   fd: { bigBanks: '6.25 – 7.1%', smallBanks: '8 – 8.5% tak', dicgc: '₹5 lakh / depositor / bank' },
   liquidFunds: '≈ 6.4 – 6.6% (abhi ka 1-saal average)',
-  tbill: { d91: '≈ 5.4%', d182: '≈ 5.8%', d364: '≈ 6.1%' },
+  tbill: { d91: 5.4, d182: 5.8, d364: 6.1 },
   rd: '≈ 6.5 – 7.5%',
   arbitrage: '≈ 6 – 7.5%',
   nifty: {
@@ -95,6 +99,102 @@ const FINANCE_DATA = {
     ['Repo rate', 'RBI MPC — Sep 2026'],
   ],
 };
+
+/* ============================================================
+   LIVE RATES — app khud internet se updated rehti hai 📡
+   ------------------------------------------------------------
+   3-layer system (user ko kuch nahi karna padta):
+   1) ONLINE: GitHub par rakhe rates.json se latest data fetch
+      (GitHub Action har Somwar CCIL se T-bill yields laakar
+       is file ko auto-update karta hai — scripts/update-rates.mjs)
+   2) OFFLINE CACHE: online aaya data localStorage mein — agli
+      baar internet na ho to bhi fresh data milta hai
+   3) BUNDLED: app ke andar packed data — hamesha kaam aata hai
+   Safety: har fetched data VALIDATE hota hai (schema + sanity
+   range). Galat/milaulat data kabhi merge nahi hota.
+   ============================================================ */
+let FIN = FINANCE_DATA; /* runtime rates — UI hamesha isse padhta hai */
+const RATES_URLS = [
+  'https://raw.githubusercontent.com/Ritesh1312-art/Monthly-Expense/main/rates.json',
+  'https://raw.githubusercontent.com/Ritesh1312-art/Monthly-Expense/arena/01a0d7cb-monthly-expense/rates.json'
+];
+const RATES_CACHE_KEY = 'paisaguru_rates';
+const ratesStatus = { live: false, cached: false, when: '' };
+
+function validRates(d) {
+  if (!d || d.schemaVersion !== 1) return false;
+  if (d.auto && d.auto.tbill) {
+    const t = d.auto.tbill;
+    if (![t.d91, t.d182, t.d364].every(v => typeof v === 'number' && v > 0.5 && v < 15)) return false; /* 55% jaisa impossible data reject */
+  }
+  return true;
+}
+
+async function refreshRates() {
+  /* Layer 1: online fetch (har URL try, fail par agla) */
+  if (typeof fetch === 'function') {
+    for (const url of RATES_URLS) {
+      try {
+        const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' });
+        if (!res || !res.ok) continue;
+        const data = await res.json();
+        if (!validRates(data)) continue;
+        FIN = Object.assign({}, FINANCE_DATA, data);
+        ratesStatus.live = true;
+        ratesStatus.cached = false;
+        ratesStatus.when = (data.auto && data.auto.asOfISO) || data.manualVerifiedOnISO || '';
+        try { store.setItem(RATES_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data })); } catch (e) {}
+        renderAll();
+        return;
+      } catch (e) { /* network/CORS error — agla URL try karein */ }
+    }
+  }
+  /* Layer 2: offline cache — bundled se nayi ho tabhi use karein */
+  try {
+    const raw = store.getItem(RATES_CACHE_KEY);
+    if (raw) {
+      const { data } = JSON.parse(raw);
+      if (validRates(data) && data.manualVerifiedOnISO > FINANCE_DATA.manualVerifiedOnISO) {
+        FIN = Object.assign({}, FINANCE_DATA, data);
+        ratesStatus.live = true;
+        ratesStatus.cached = true;
+        ratesStatus.when = (data.auto && data.auto.asOfISO) || data.manualVerifiedOnISO;
+        renderAll();
+      }
+    }
+  } catch (e) { /* cache corrupt — chupchap bundled par chalein */ }
+}
+
+/* Data kitna purana hai? (auto T-bill ho to uski date, warna manual verify date) */
+function ratesAgeDays() {
+  const iso = (FIN.auto && FIN.auto.tbill && FIN.auto.asOfISO) ? FIN.auto.asOfISO : FIN.manualVerifiedOnISO;
+  if (!iso) return 9999;
+  const p = String(iso).split('-').map(Number);
+  const then = new Date(p[0], p[1] - 1, p[2]);
+  return Math.max(0, Math.round((Date.now() - then.getTime()) / 86400000));
+}
+
+/* T-bill display — auto (live) ho to wahi, warna curated */
+function tbillLine() {
+  const hasAuto = !!(FIN.auto && FIN.auto.tbill);
+  const t = hasAuto ? FIN.auto.tbill : FIN.tbill;
+  const src = hasAuto ? (FIN.auto.source + ' · auto-fetched ' + FIN.auto.asOfISO) : ('CCIL — curated ' + FIN.manualVerifiedOn);
+  return { d91: t.d91, d182: t.d182, d364: t.d364, src, auto: hasAuto };
+}
+
+/* Status chip — user ko hamesha dikhe data kis din ka hai */
+function ratesStatusChip() {
+  const age = ratesAgeDays();
+  const fresh = age <= 45;
+  let label;
+  if (ratesStatus.cached) label = '📴 Cached rates (' + ratesStatus.when + ')';
+  else if (ratesStatus.live && FIN.auto) label = '📡 Live T-bill: CCIL ' + FIN.auto.asOfISO;
+  else if (ratesStatus.live) label = '📡 Remote rates (' + (FIN.manualVerifiedOn || '') + ')';
+  else label = '📴 Bundled rates (' + FIN.manualVerifiedOn + ')';
+  let html = '<span class="chip ' + (fresh ? (ratesStatus.live ? 'good' : 'plain') : 'warn') + '">' + label + '</span>';
+  if (!fresh) html += ' <span class="chip bad">Data ' + age + ' din purana — invest se pehle current rates check karein!</span>';
+  return html;
+}
 
 /* ---------------- State ---------------- */
 function defaultState() {
@@ -1022,26 +1122,30 @@ function renderReport() {
 /* ============================================================
    SALAH (ADVICE / INVESTMENT) VIEW
    ============================================================ */
-const QUICK_OPTIONS = [
-  { icon: '🏦', name: 'Fixed Deposit (FD)', time: '7 din – 10 saal', ret: FINANCE_DATA.fd.bigBanks + ' /saal', risk: 'Bahut kam', note: 'SBI ~6.3–6.45%, HDFC/ICICI ~7.1%, small finance banks 8%+. DICGC insurance ₹5L/bank' },
-  { icon: '💧', name: 'Liquid Mutual Fund', time: '1 – 3 din mein nikaal sakte hain', ret: '≈ 6.5% /saal (abhi)', risk: 'Bahut kam (market-linked)', note: 'Savings account se better, almost turant access — par return fixed nahi' },
-  { icon: '📜', name: 'Treasury Bill (T-Bill)', time: '91 / 182 / 364 din', ret: '≈ 5.4 – 6.1% /saal', risk: 'Bahut kam', note: '91D ≈5.4% · 182D ≈5.8% · 364D ≈6.1% — RBI Retail Direct app se, Govt of India ka paper' },
-  { icon: '🔁', name: 'Recurring Deposit (RD)', time: '6 mahine – 10 saal', ret: FINANCE_DATA.rd + ' /saal', risk: 'Bahut kam', note: 'Har mahine fixed amount auto-debit — paisa bachta hi jayega' },
-  { icon: '⚖️', name: 'Arbitrage Fund', time: '3+ mahine', ret: FINANCE_DATA.arbitrage + ' /saal', risk: 'Kam', note: 'Return FD jaisa, par equity tax (LTCG 12.5%) — high slab walo ko fayda' },
-];
+/* Quick options — runtime par FIN (live/bundled rates) se banti hain */
+function quickOptions() {
+  const tb = tbillLine();
+  return [
+    { icon: '🏦', name: 'Fixed Deposit (FD)', time: '7 din – 10 saal', ret: FIN.fd.bigBanks + ' /saal', risk: 'Bahut kam', note: 'SBI ~6.3–6.45%, HDFC/ICICI ~7.1%, small finance banks 8%+. DICGC insurance ₹5L/bank' },
+    { icon: '💧', name: 'Liquid Mutual Fund', time: '1 – 3 din mein nikaal sakte hain', ret: '≈ 6.5% /saal (abhi)', risk: 'Bahut kam (market-linked)', note: 'Savings account se better, almost turant access — par return fixed nahi' },
+    { icon: '📜', name: 'Treasury Bill (T-Bill)', time: '91 / 182 / 364 din', ret: '≈ ' + tb.d91 + ' – ' + tb.d364 + '% /saal', risk: 'Bahut kam', note: '91D ≈' + tb.d91 + '% · 182D ≈' + tb.d182 + '% · 364D ≈' + tb.d364 + '% — RBI Retail Direct app se, Govt of India ka paper' },
+    { icon: '🔁', name: 'Recurring Deposit (RD)', time: '6 mahine – 10 saal', ret: FIN.rd + ' /saal', risk: 'Bahut kam', note: 'Har mahine fixed amount auto-debit — paisa bachta hi jayega' },
+    { icon: '⚖️', name: 'Arbitrage Fund', time: '3+ mahine', ret: FIN.arbitrage + ' /saal', risk: 'Kam', note: 'Return FD jaisa, par equity tax (LTCG 12.5%) — high slab walo ko fayda' },
+  ];
+}
 
 function buildAllocation(leftover) {
   if (leftover <= 0) return [];
   const efDone = !!state.settings.emergencyDone;
   const base = efDone ? [
     { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 50, tag: 'Long Term', why: 'Nifty 50 TRI ka 20-saal average ≈12.4% — ye ASSUMPTION hai, guarantee nahi. Har mahine automatic invest, compounding ka asli jaadu.' },
-    { icon: '🏦', name: 'FD / T-Bill / Debt Fund', pct: 25, tag: 'Short Term', why: 'Safe 5.4–7.5% (Sep 2026). 1-3 saal ke goals (phone, vacation) ke liye.' },
+    { icon: '🏦', name: 'FD / T-Bill / Debt Fund', pct: 25, tag: 'Short Term', why: 'Safe ' + tbillLine().d91 + '–7.5% (verified ' + FIN.manualVerifiedOn + '). 1-3 saal ke goals (phone, vacation) ke liye.' },
     { icon: '🥇', name: 'Gold (Gold ETF / Gold Fund)', pct: 15, tag: 'Hedge', why: 'Inflation se ladne wala asset. (SGB naye investors ke liye band hai — Feb 2024 se koi naya tranche nahi.)' },
     { icon: '🧾', name: 'ELSS / PPF (Tax Saving)', pct: 10, tag: 'Tax Bachat', why: 'Section 80C mein ₹1.5L tak — SIRF old regime mein (new regime default hai, ₹12L tak tax zero ho sakta hai).' },
   ] : [
     { icon: '🛡️', name: 'Emergency Fund (Liquid Fund/Savings)', pct: 40, tag: 'Sabse Pehle', why: '3-6 mahine ka kharcha pehle jama karein. Bimari, job jaana, koi bhi emergency — yahi aapko bachayega.' },
     { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 35, tag: 'Long Term', why: 'Bacha hua paisa har mahine automatic invest — 20-saal average ≈12.4% (TRI), par ye assumption hai, guarantee nahi.' },
-    { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: 'Safe 5.4–7.5% return (Sep 2026), zarurat pade to turant nikaal sakte hain.' },
+    { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: 'Safe ' + tbillLine().d91 + '–7.5% return (verified ' + FIN.manualVerifiedOn + '), zarurat pade to turant nikaal sakte hain.' },
     { icon: '🥇', name: 'Gold (Gold ETF / Fund)', pct: 10, tag: 'Hedge', why: 'Thoda gold har portfolio mein hona hi chahiye — SGB ab naye liye band hai.' },
   ];
   const cards = base.map(a => Object.assign({}, a, { amount: Math.floor(leftover * a.pct / 100) }));
@@ -1170,7 +1274,7 @@ function renderAdvice() {
       <table class="table">
         <thead><tr><th>Option</th><th>Time</th><th>Return</th><th>Risk</th></tr></thead>
         <tbody>
-          ${QUICK_OPTIONS.map(o => `<tr>
+          ${quickOptions().map(o => `<tr>
             <td><b>${o.icon} ${o.name}</b><br><span class="small muted">${o.note}</span></td>
             <td>${o.time}</td>
             <td><b>${o.ret}</b></td>
@@ -1227,7 +1331,7 @@ function educationCards() {
       <table class="table">
         <thead><tr><th>Option</th><th>Time</th><th>Return</th><th>Risk</th></tr></thead>
         <tbody>
-          ${QUICK_OPTIONS.map(o => `<tr><td><b>${o.icon} ${o.name}</b><br><span class="small muted">${o.note}</span></td><td>${o.time}</td><td><b>${o.ret}</b></td><td class="small">${o.risk}</td></tr>`).join('')}
+          ${quickOptions().map(o => `<tr><td><b>${o.icon} ${o.name}</b><br><span class="small muted">${o.note}</span></td><td>${o.time}</td><td><b>${o.ret}</b></td><td class="small">${o.risk}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>
@@ -1236,19 +1340,20 @@ function educationCards() {
 }
 
 function sourcesCardHtml() {
+  const tb = tbillLine();
   const rows = [
-    ['🏦 FD (bade banks)', FINANCE_DATA.fd.bigBanks, 'Bank websites — Sep 2026'],
-    ['🏦 FD (small finance banks)', FINANCE_DATA.fd.smallBanks + ' — par DICGC ₹5L/bank ke andar hi', 'Bank websites — Sep 2026'],
-    ['📜 T-Bill 91 / 182 / 364 din', FINANCE_DATA.tbill.d91 + ' / ' + FINANCE_DATA.tbill.d182 + ' / ' + FINANCE_DATA.tbill.d364, 'CCIL — 24 Sep 2026'],
-    ['💧 Liquid funds (1-saal)', FINANCE_DATA.liquidFunds, 'Groww / Scripbox — Sep 2026'],
-    ['📈 Nifty 50 TRI average', FINANCE_DATA.nifty.tri20y + ' (20 saal) · ' + FINANCE_DATA.nifty.triSinceInception + ' (1995 se)', 'NSE Factsheet / Whitepaper 2026'],
+    ['🏦 FD (bade banks)', FIN.fd.bigBanks, 'Bank websites — Sep 2026'],
+    ['🏦 FD (small finance banks)', FIN.fd.smallBanks + ' — par DICGC ₹5L/bank ke andar hi', 'Bank websites — Sep 2026'],
+    ['📜 T-Bill 91 / 182 / 364 din', '≈' + tb.d91 + '% / ≈' + tb.d182 + '% / ≈' + tb.d364 + '%', tb.src],
+    ['💧 Liquid funds (1-saal)', FIN.liquidFunds, 'Groww / Scripbox — Sep 2026'],
+    ['📈 Nifty 50 TRI average', FIN.nifty.tri20y + ' (20 saal) · ' + FIN.nifty.triSinceInception + ' (1995 se)', 'NSE Factsheet / Whitepaper 2026'],
     ['🥇 SGB status', 'Naye investment ke liye BAND (Feb 2024 se)', 'RBI / Finance Ministry'],
-    ['🏦 RBI Repo Rate', FINANCE_DATA.repoRate, 'RBI MPC — Sep 2026'],
+    ['🏦 RBI Repo Rate', FIN.repoRate, 'RBI MPC — Sep 2026'],
     ['🧾 Tax (FY 2026-27)', 'New regime default · 80C/NPS-₹50K sirf old regime · LTCG 12.5%, STCG 20%', 'Income Tax Act / TaxGuru'],
   ];
   return `
   <div class="card">
-    <div class="card-title">📚 Ye Adaad Kahan Se Aaye? <span class="chip good">Verified ${FINANCE_DATA.verifiedOn}</span></div>
+    <div class="card-title">📚 Ye Adaad Kahan Se Aaye? ${ratesStatusChip()}</div>
     <div class="table-wrap">
       <table class="table">
         <thead><tr><th>Baat</th><th>Value</th><th>Source</th></tr></thead>
@@ -1257,12 +1362,13 @@ function sourcesCardHtml() {
         </tbody>
       </table>
     </div>
-    <div class="tip tip-warn mt8"><span class="tip-ico">🔄</span><div class="tip-text"><b>Rates badalte rehte hain</b> — ye ${FINANCE_DATA.verifiedOn} ke verified figures hain. Invest karne se pehle current rates khud check karein (bank, RBI Retail Direct, ya SEBI-registered advisor se).</div></div>
+    <div class="tip tip-info mt8"><span class="tip-ico">📡</span><div class="tip-text"><b>App khud update hoti hai</b> — online hote hi GitHub se latest rates aa jaati hain, aur har Somwar ek automated bot CCIL se T-bill yields laakar update karta hai. Internet na ho to bhi app bundled/cached data se chalti hai.</div></div>
+    <div class="tip tip-warn mt8"><span class="tip-ico">🔄</span><div class="tip-text"><b>Rates badalte rehte hain</b> — manual verified ${FIN.manualVerifiedOn} ko. Invest karne se pehle current rates khud check karein (bank, RBI Retail Direct, ya SEBI-registered advisor se).</div></div>
   </div>`;
 }
 
 function disclaimerHtml() {
-  return `<div class="disclaimer">⚠️ <b>PaisaGuru SEBI-registered investment advisor NAHI hai.</b> Ye app general financial education deti hai — personalized investment advice nahi. Saare numbers ${FINANCE_DATA.verifiedOn} ko verified hain, par market/rates badalte rehte hain aur koi bhi return guaranteed nahi hai (mutual funds market risk ke subject hain). Bada investment karne se pehle apni sthiti ke hisaab se SEBI-registered advisor se salah zaroor lein. App ka data sirf aapke browser mein save hota hai.</div>`;
+  return `<div class="disclaimer">⚠️ <b>PaisaGuru SEBI-registered investment advisor NAHI hai.</b> Ye app general financial education deti hai — personalized investment advice nahi. Rates auto-update hoti hain (T-bill weekly, baaki manually verified ${FIN.manualVerifiedOn} ko) par market badalta rehta hai aur <b>koi bhi return guaranteed nahi hai</b> (mutual funds market risk ke subject hain). Bada investment karne se pehle apni sthiti ke hisaab se SEBI-registered advisor se salah zaroor lein. App ka data sirf aapke browser mein save hota hai.</div>`;
 }
 
 /* ============================================================
@@ -1637,8 +1743,8 @@ function renderSettings() {
       <div>💰 <b>PaisaGuru</b> — Monthly Expense Tracker & Smart Saving Advisor</div>
       <div>Salary aaye → plan banaye → jo bache use invest kare → har mahine analysis se better kare. Ye poori app offline chalti hai, data aapke paas rehta hai.</div>
       <div>🎤 Voice input (Chrome/Edge) · 🎯 Savings Goals · 📊 Monthly analysis · 💡 Investment salah</div>
-      <div>📚 Investment ke saare numbers <b>${FINANCE_DATA.verifiedOn}</b> ko web se verify kiye gaye hain — Salah tab mein sources ki poori table hai.</div>
-      <div>Version 1.2 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
+      <div>📚 Investment ke saare numbers web se verified hain — <b>app khud internet se rates update karti rehti hai</b> (GitHub se live fetch + weekly auto-bot). Sources ki poori table Salah tab mein hai.</div>
+      <div>Version 1.3 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
     </div>
   </div>
   ${disclaimerHtml()}`;
@@ -1915,3 +2021,4 @@ document.getElementById('goalOverlay').addEventListener('click', e => {
 
 /* ---------------- Init ---------------- */
 renderAll();
+refreshRates(); /* 📡 internet se latest rates (fail par bundled/cached — app kabhi nahi rukti) */

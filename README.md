@@ -95,6 +95,41 @@ Monthly-Expense/
 
 Ye app **general financial education** ke liye hai — personalized investment advice nahi. **PaisaGuru SEBI-registered investment advisor NAHI hai.** Investment ke saare numbers web se verify karke, date-stamp ke saath dikhaye jaate hain (Salah tab → "Ye Adaad Kahan Se Aaye?" card mein sources ki poori table). Par rates badalte rehte hain aur **koi bhi return guaranteed nahi** — bada investment karne se pehle SEBI-registered advisor se salah lein.
 
+## 📡 Auto-Update Pipeline — App Khud Updated Rehti Hai
+
+User ko kuch nahi karna padta — internet on karo, bas:
+
+```
+                    ┌──────────────────────────────┐
+                    │  har Somwar (GitHub Action)  │
+                    │  CCIL site → T-bill yields   │
+                    │  sanity-check → rates.json   │
+                    └──────────────┬───────────────┘
+                                   ↓ (git push)
+   App load ──→ GitHub se rates.json fetch (live) ✅
+        ├─ internet nahi? → localStorage cache (pichhli baar ka fresh data) ✅
+        ├─ wo bhi nahi?   → app ke andar bundled data (offline guarantee) ✅
+        └─ har haal mein: data ki date UI par dikhti hai + 45 din purana ho to WARNING
+```
+
+| Layer | Kya | Kab kaam aata hai |
+|---|---|---|
+| 1. Live fetch | App khulte hi GitHub raw se latest `rates.json` | Internet hai |
+| 2. Offline cache | Last-fetched data localStorage mein | Internet gayab, par pehle kabhi online tha |
+| 3. Bundled | App ke andar packed verified data (abhi: 25 Sep 2026) | Hamesha — app kabhi nahi rukti |
+
+**Weekly bot** (`.github/workflows/update-rates.yml` + `scripts/update-rates.mjs`): har Somwar CCIL ki website se 91/182/364-din T-bill yields uthata hai aur `rates.json` commit karta hai.
+
+**Safety rules (bot galat data kabhi nahi likhega):**
+1. Parse fail / adhoora data → rates.json ko chhoota hi nahi (safe skip, agla Somwar phir try)
+2. Sanity range — yield 0.5–15% ke bahar (jaise 55%) → reject
+3. Curve check — 91D ≤ 182D ≤ 364D se bahut zyada ulta → junk reject
+4. Har failure silent exit — workflow red nahi hota, achhe data ko koi khatra nahi
+
+**Manual update** (FD/Nifty/tax jaise curated numbers): bas `rates.json` edit karke push kar do — saare users ko agli app-load par turant naya data mil jayega (code change ki zaroorat nahi).
+
+> ⚠️ Note: GitHub ka schedule sirf **default branch (main)** par chalta hai — workflow main mein merge hone ke baad activate hota hai. Manual run kabhi bhi ho sakta hai (Actions tab → Run workflow).
+
 ## 📚 Data Verification (25 Sep 2026)
 
 App ke saare investment numbers ek hi jagah (`FINANCE_DATA` in `app.js`) mein hain, web-verified:
