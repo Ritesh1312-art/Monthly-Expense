@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "manualVerifiedOn": "25 Sep 2026",
+  "manualVerifiedOnISO": "2026-09-25",
+  "auto": null,
+  "repoRate": "5.25% (RBI, Sep 2026)",
+  "fd": {
+    "bigBanks": "6.25 – 7.1%",
+    "smallBanks": "8 – 8.5% tak",
+    "dicgc": "₹5 lakh / depositor / bank"
+  },
+  "liquidFunds": "≈ 6.4 – 6.6% (abhi ka 1-saal average)",
+  "tbill": { "d91": 5.4, "d182": 5.8, "d364": 6.1 },
+  "rd": "≈ 6.5 – 7.5%",
+  "arbitrage": "≈ 6 – 7.5%",
+  "nifty": {
+    "tri20y": "≈ 12.4% / saal",
+    "triSinceInception": "≈ 12.4% (1995 se)",
+    "priSinceInception": "≈ 10.9% (1995 se)"
+  },
+  "sgbStatus": "Naye investment ke liye BAND — Feb 2024 ke baad koi naya tranche nahi (secondary market mein purane khareede ja sakte hain)",
+  "tax": {
+    "newRegimeDefault": "New regime DEFAULT hai (₹12L tak income zero tax ho sakta hai)",
+    "c80": "₹1.5L — sirf OLD regime (ELSS, PPF, LIC, EPF)",
+    "nps50k": "₹50,000 extra — sirf OLD regime (80CCD(1B))",
+    "employerNps": "Employer NPS 14% tak — DONO regime mein (80CCD(2))",
+    "equityLTCG": "12.5% — ₹1.25L/year se upar wale gains par",
+    "equitySTCG": "20% — 12 mahine se kam hold par",
+    "debtFunds": "Slab rate (Apr 2023 ke baad khareede gaye debt funds)"
+  },
+  "sources": [
+    ["T-Bill yields (91/182/364 din)", "CCIL indicative yields — 24 Sep 2026"],
+    ["FD rates (SBI/HDFC/ICICI + small finance banks)", "Bank websites, BusinessToday — Sep 2026"],
+    ["Liquid fund returns", "Groww / Scripbox fund data — Sep 2026"],
+    ["Nifty 50 average return", "NSE Nifty 50 Factsheet (Jun 2026) / Whitepaper 2026"],
+    ["SGB status", "RBI / Finance Ministry post-Budget briefing"],
+    ["Tax rules FY 2026-27", "Income Tax Act (via TaxGuru / ClearTax)"],
+    ["Repo rate", "RBI MPC — Sep 2026"]
+  ]
+}
