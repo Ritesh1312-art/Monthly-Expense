@@ -4,7 +4,15 @@
   "supportWhatsapp": "",
   "manualVerifiedOn": "25 Sep 2026",
   "manualVerifiedOnISO": "2026-09-25",
-  "auto": null,
+  "auto": {
+    "tbill": {
+      "d91": 5.39,
+      "d182": 5.8196,
+      "d364": 6.0895
+    },
+    "asOfISO": "2026-09-28",
+    "source": "CCIL tenor-wise indicative yields (auto-fetched)"
+  },
   "repoRate": "5.25% (RBI, Sep 2026)",
   "fd": {
     "bigBanks": "6.25 – 7.1%",
