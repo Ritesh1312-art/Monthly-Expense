@@ -64,6 +64,11 @@ const catById = id => CATEGORIES.find(c => c.id === id) || { id, name: id, icon:
    ============================================================ */
 const FINANCE_DATA = {
   schemaVersion: 1,
+  /* Licensing server ka URL. KHALI = app poori tarah FREE (koi trial,
+     koi lock, koi login nahi). Owner deploy ke baad rates.json mein
+     apna Render URL daalega — tab hi licensing ON hoti hai. */
+  apiBase: '',
+  supportWhatsapp: '',
   manualVerifiedOn: '25 Sep 2026',
   manualVerifiedOnISO: '2026-09-25',
   verifiedOn: '25 Sep 2026',
@@ -145,6 +150,7 @@ async function refreshRates() {
         ratesStatus.when = (data.auto && data.auto.asOfISO) || data.manualVerifiedOnISO || '';
         try { store.setItem(RATES_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data })); } catch (e) {}
         renderAll();
+        maybeInitLicense(); /* rates.json se apiBase mila to licensing ON */
         return;
       } catch (e) { /* network/CORS error — agla URL try karein */ }
     }
@@ -160,6 +166,7 @@ async function refreshRates() {
         ratesStatus.cached = true;
         ratesStatus.when = (data.auto && data.auto.asOfISO) || data.manualVerifiedOnISO;
         renderAll();
+        maybeInitLicense();
       }
     }
   } catch (e) { /* cache corrupt — chupchap bundled par chalein */ }
@@ -213,7 +220,10 @@ function loadState() {
     };
   } catch (e) { return defaultState(); }
 }
-function saveState() { store.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function saveState() {
+  store.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (typeof queueCloudSync === 'function') queueCloudSync();
+}
 
 let state = loadState();
 let selectedMonth = monthKey(new Date());
@@ -587,6 +597,7 @@ function openGoalModal() {
 }
 
 function saveGoalForm(form) {
+  if (!assertUnlocked()) return;
   const icon = (form.querySelector('input[name="gicon"]:checked') || {}).value || '🎯';
   const name = form.querySelector('#goalName').value.trim();
   const target = Number(form.querySelector('#goalTarget').value);
@@ -625,6 +636,7 @@ function openContribModal(id) {
 }
 
 function addContribution(form) {
+  if (!assertUnlocked()) return;
   const id = form.getAttribute('data-id');
   const g = (state.goals || []).find(x => x.id === id);
   if (!g) return;
@@ -640,6 +652,7 @@ function addContribution(form) {
 }
 
 function deleteGoal(id) {
+  if (!assertUnlocked()) return;
   const g = (state.goals || []).find(x => x.id === id);
   showConfirm('Goal "' + (g ? g.name : '') + '" delete kar dein?', () => {
     state.goals = (state.goals || []).filter(x => x.id !== id);
@@ -713,7 +726,7 @@ function topCTA(text) {
 function renderHome() {
   const el = document.getElementById('view-home');
   const md = monthData(selectedMonth);
-  if (!md) { el.innerHTML = noDataCard(); return; }
+  if (!md) { el.innerHTML = licenseBannerHtml() + noDataCard(); return; }
 
   const salary = md.salary;
   const byCat = spentByCategory(md);
@@ -774,7 +787,7 @@ function renderHome() {
     ? `<div class="tip tip-bad"><span class="tip-ico">🚨</span><div><div class="tip-title">Salary ka ${pct(spentPct)} kharch ho chuka!</div><div class="tip-text">Mahina abhi baaki hai — ab bilkul sirf zaroori kharche karein.</div></div></div>`
     : '';
 
-  el.innerHTML = `
+  el.innerHTML = licenseBannerHtml() + `
   <div class="card">
     <div class="row between">
       <div>
@@ -922,6 +935,7 @@ function renderExpense() {
 }
 
 function handleExpenseSubmit(form) {
+  if (!assertUnlocked()) return;
   const md = monthData(selectedMonth);
   if (!md) return;
   const amount = Number(form.querySelector('#expAmount').value);
@@ -950,6 +964,7 @@ function handleExpenseSubmit(form) {
 }
 
 function deleteExpense(id) {
+  if (!assertUnlocked()) return;
   const md = monthData(selectedMonth);
   if (!md || !md.expenses) return;
   md.expenses = md.expenses.filter(e => e.id !== id);
@@ -1483,6 +1498,7 @@ function generateInsights(key) {
    SALARY → PLAN WIZARD
    ============================================================ */
 function openWizard() {
+  if (!assertUnlocked()) return;
   const md = monthData(selectedMonth);
   wiz = {
     step: 1,
@@ -1676,6 +1692,7 @@ function wizardBack() {
 }
 
 function wizardComplete() {
+  if (!assertUnlocked()) return;
   if (!wiz || wiz.step !== 2) return;
   const pTotal = sum(Object.values(wiz.planned));
   if (pTotal <= 0) { toast('Kam se kam ek category mein amount daalein', 'error'); return; }
@@ -1737,6 +1754,8 @@ function renderSettings() {
     </div>
   </div>
 
+  ${licenseCardHtml()}
+
   <div class="card">
     <div class="card-title">ℹ️ PaisaGuru Ke Baare Mein</div>
     <div class="small muted stack">
@@ -1751,6 +1770,7 @@ function renderSettings() {
 }
 
 function saveSettingsForm() {
+  if (!assertUnlocked()) return;
   state.settings.name = (document.getElementById('setName').value || '').trim();
   state.settings.emergencySaved = Number(document.getElementById('setEmergency').value) || 0;
   saveState();
@@ -1759,6 +1779,7 @@ function saveSettingsForm() {
 }
 
 function toggleEmergency() {
+  if (!assertUnlocked()) return;
   state.settings.emergencyDone = !state.settings.emergencyDone;
   saveState();
   toast(state.settings.emergencyDone
@@ -1782,6 +1803,7 @@ function exportData() {
 }
 
 function importData(file) {
+  if (!assertUnlocked()) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
@@ -1800,6 +1822,7 @@ function importData(file) {
 }
 
 function clearAllData() {
+  if (!assertUnlocked()) return;
   state = defaultState();
   saveState();
   selectedMonth = monthKey(new Date());
@@ -1812,6 +1835,7 @@ function clearAllData() {
    (Dynamic: hamesha aaj ke mahine ke hisaab se banta hai)
    ============================================================ */
 function loadDemoData() {
+  if (!assertUnlocked()) return;
   let idc = 1;
   const iso = (key, day) => key + '-' + String(Math.min(day, daysInMonth(key))).padStart(2, '0');
   const E = (key, day, cat, amount, note) => ({ id: 'demo' + (idc++), date: iso(key, day), category: cat, amount, note });
@@ -1925,6 +1949,421 @@ function hideConfirm() {
   confirmCb = null;
 }
 
+
+/* ============================================================
+   LICENSING (v1 + v2)  🔐
+   ------------------------------------------------------------
+   v1: 7-din server-side trial + direct license key (IP/device bind)
+   v2: account login (phone + password), personal space portal,
+       per-user key, aur cloud sync (backup/restore).
+
+   ⚠️ AHAM: agar FIN.apiBase KHALI hai to app poori tarah FREE
+   hai — koi trial, koi lock, koi login kuch nahi. Owner jab
+   rates.json mein apna server URL daalta hai tabhi licensing
+   ON hoti hai.
+
+   User ka data KABHI delete nahi hota — trial khatam hone par
+   sirf editing band hoti hai, data read-only dikhta rehta hai.
+   ============================================================ */
+
+const LIC_KEY = 'pg_license';
+
+function defaultLicense() {
+  return {
+    mode: 'none',          // 'none' | 'trial' | 'activated'
+    deviceId: '',
+    key: '',
+    token: '',
+    userName: '',
+    userPhone: '',
+    trialEnd: 0,
+    readOnly: false,
+    localTrial: false
+  };
+}
+
+function loadLicense() {
+  try {
+    const raw = store.getItem(LIC_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Object.assign(defaultLicense(), parsed || {});
+  } catch (e) { return defaultLicense(); }
+}
+function saveLicense() { try { store.setItem(LIC_KEY, JSON.stringify(lic)); } catch (e) {} }
+
+let lic = loadLicense();
+let licReady = false;      // init ho chuka?
+let licBusy = false;       // koi network call chal rahi hai?
+
+function ensureDeviceId() {
+  if (!lic.deviceId) {
+    lic.deviceId = 'dev-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    saveLicense();
+  }
+  return lic.deviceId;
+}
+
+function apiBase() {
+  const b = (FIN && FIN.apiBase) || '';
+  return String(b).replace(/\/+$/, '');
+}
+function licensingOn() { return apiBase() !== ''; }
+
+async function api(path, body) {
+  const res = await fetch(apiBase() + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  return { status: res.status, ok: res.ok && data.ok !== false, data: data || {} };
+}
+
+/* ---------------- Lock state ---------------- */
+function trialDaysLeft() {
+  if (!lic.trialEnd) return 0;
+  return Math.max(0, Math.ceil((lic.trialEnd - Date.now()) / 86400000));
+}
+function isActivated() { return lic.mode === 'activated'; }
+function isLocked() {
+  if (!licensingOn()) return false;              // FREE app
+  if (isActivated()) return false;
+  if (lic.mode === 'trial' && trialDaysLeft() > 0) return false;
+  return licReady;                               // init hone tak lock mat karo
+}
+
+/**
+ * Har edit se pehle call hota hai. Locked ho to edit block +
+ * lock screen. Data kabhi delete nahi hota — sirf editing rukti hai.
+ */
+function assertUnlocked() {
+  if (!isLocked()) return true;
+  lic.readOnly = true;
+  saveLicense();
+  showLockOverlay();
+  toast('Trial khatam ho gaya — editing ke liye activate karein 🔐', 'error');
+  return false;
+}
+
+/* ---------------- Init ---------------- */
+async function initLicense() {
+  if (!licensingOn()) { licReady = true; return; }
+  ensureDeviceId();
+
+  /* Account token se resume */
+  if (lic.token) {
+    try {
+      const me = await api('/api/auth/me', { token: lic.token });
+      if (me.ok) {
+        lic.userName = (me.data.user && me.data.user.name) || lic.userName;
+        lic.userPhone = (me.data.user && me.data.user.phone) || lic.userPhone;
+        saveLicense();
+        if (me.data.license && me.data.license.status === 'active') {
+          const act = await api('/api/activate', { token: lic.token, deviceId: lic.deviceId });
+          if (act.ok) {
+            lic.mode = 'activated';
+            lic.key = (act.data.license && act.data.license.key) || lic.key;
+            lic.readOnly = false;
+            saveLicense();
+            licReady = true;
+            await restoreFromCloud(true);
+            renderAll();
+            return;
+          }
+        }
+      } else if (me.status === 401) {
+        lic.token = '';                          // token dead — clear
+        saveLicense();
+      }
+    } catch (e) { licReady = true; return; }     // offline: jaisa tha waisa chalne do
+  }
+
+  /* Direct key se resume */
+  if (lic.key && lic.mode === 'activated') {
+    try {
+      const act = await api('/api/activate', { key: lic.key, deviceId: lic.deviceId });
+      if (act.ok) { licReady = true; renderAll(); return; }
+      if (act.data.code === 'blocked' || act.data.code === 'bad_key') { lic.mode = 'none'; lic.key = ''; saveLicense(); }
+    } catch (e) { licReady = true; return; }
+  }
+
+  /* Trial */
+  try {
+    let r = await api('/api/trial/status', { deviceId: lic.deviceId });
+    if (!r.ok) r = await api('/api/trial/start', { deviceId: lic.deviceId });
+    if (r.ok) {
+      lic.mode = 'trial';
+      lic.trialEnd = Date.now() + (Number(r.data.daysLeft) || 0) * 86400000;
+      lic.localTrial = false;
+      saveLicense();
+    } else if (r.data.code === 'ip_limit') {
+      lic.mode = 'none';
+      lic.trialEnd = 0;
+      saveLicense();
+    }
+  } catch (e) {
+    /* server down — user ko band mat karo, local grace trial */
+    if (!lic.trialEnd) {
+      lic.mode = 'trial';
+      lic.localTrial = true;
+      lic.trialEnd = Date.now() + 7 * 86400000;
+      saveLicense();
+    }
+  }
+
+  licReady = true;
+  lic.readOnly = isLocked();
+  saveLicense();
+  renderAll();
+  if (isLocked()) showLockOverlay();
+}
+
+/* rates.json se apiBase baad mein aaye to licensing tab shuru karein */
+let licInitStarted = false;
+function maybeInitLicense() {
+  if (licInitStarted) return;
+  if (!licensingOn()) return;
+  licInitStarted = true;
+  initLicense();
+}
+
+/* ---------------- Banners & UI ---------------- */
+function licenseBannerHtml() {
+  if (!licensingOn() || isActivated()) return '';
+  if (lic.mode === 'trial' && trialDaysLeft() > 0) {
+    const d = trialDaysLeft();
+    return `<div class="card lic-banner${d <= 2 ? ' warn' : ''}">
+      <b>⏳ Free trial — ${d} din baaki</b>
+      <div class="small muted">Trial ke baad bhi aapka data surakshit rahega, sirf editing band hogi.</div>
+      <button class="btn primary sm mt8" data-action="open-license">🔓 Abhi Activate Karein</button>
+    </div>`;
+  }
+  if (isLocked()) {
+    return `<div class="card lic-banner danger">
+      <b>🔐 Trial khatam — app read-only mode mein hai</b>
+      <div class="small muted">Aapka poora data surakshit hai. Activate karte hi sab kuch wapas chalu.</div>
+      <button class="btn primary sm mt8" data-action="open-license">🔓 Activate / Login</button>
+    </div>`;
+  }
+  return '';
+}
+
+function whatsappHelpUrl() {
+  const num = String((FIN && FIN.supportWhatsapp) || '').replace(/\D/g, '');
+  const msg = encodeURIComponent('Namaste, PaisaGuru activate karne mein madad chahiye.\nDevice-ID: ' + (lic.deviceId || '-'));
+  return num ? 'https://wa.me/' + num + '?text=' + msg : '';
+}
+
+function licenseFormHtml(where) {
+  const wa = whatsappHelpUrl();
+  return `
+  <div class="lic-form" data-where="${esc(where)}">
+    <form id="licLoginForm" class="stack">
+      <div class="field">
+        <label>Mobile number</label>
+        <input type="tel" id="licPhone" inputmode="numeric" placeholder="98XXXXXXXX" value="${esc(lic.userPhone || '')}" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="licPass" placeholder="••••••" required>
+      </div>
+      <button class="btn primary block" type="submit">🔑 Login karke Activate karein</button>
+    </form>
+
+    <button class="btn ghost block mt8" data-action="open-portal">🛒 Personal Space / Key Kharido</button>
+
+    <details class="lic-details mt8">
+      <summary>Purani (direct) key hai? Yahan daalein</summary>
+      <form id="licKeyForm" class="stack mt8">
+        <div class="field">
+          <label>License key</label>
+          <input type="text" id="licKeyInput" placeholder="PG-XXXXX-XXXXX-XXXXX" value="${esc(lic.key || '')}" required>
+        </div>
+        <button class="btn ghost block" type="submit">Key se Activate karein</button>
+      </form>
+    </details>
+
+    ${wa ? `<a class="btn ghost block mt8" href="${wa}" target="_blank" rel="noopener">💬 Madad chahiye? WhatsApp</a>` : ''}
+    <div class="small muted mt8 center">Device-ID: ${esc(lic.deviceId || '-')}</div>
+  </div>`;
+}
+
+function showLockOverlay() {
+  const ov = document.getElementById('lockOverlay');
+  if (!ov) return;
+  ov.innerHTML = `
+    <div class="modal lock-modal">
+      <div class="lock-title">🔐 Trial khatam ho gaya</div>
+      <p class="small muted">Aapka <b>poora data surakshit hai</b> — kuch delete nahi hua. Sirf nayi entry / editing ke liye activation chahiye. Neeche apne account se login karein.</p>
+      ${licenseFormHtml('lock')}
+      <button class="btn ghost block mt8" data-action="close-lock">👀 Sirf data dekhna hai (read-only)</button>
+    </div>`;
+  ov.classList.remove('hidden');
+}
+function hideLockOverlay() {
+  const ov = document.getElementById('lockOverlay');
+  if (ov) ov.classList.add('hidden');
+}
+
+function licenseCardHtml() {
+  if (!licensingOn()) {
+    return `<div class="card">
+      <div class="card-title">🔓 License</div>
+      <div class="small muted">Ye app abhi <b>bilkul free</b> chal rahi hai — koi login, koi key, koi limit nahi.</div>
+    </div>`;
+  }
+  const status = isActivated()
+    ? '<span class="chip ok">✅ Activated</span>'
+    : (lic.mode === 'trial' && trialDaysLeft() > 0
+      ? '<span class="chip">⏳ Trial — ' + trialDaysLeft() + ' din baaki</span>'
+      : '<span class="chip bad">🔐 Locked (read-only)</span>');
+
+  return `<div class="card">
+    <div class="card-title">🔐 License &amp; Account</div>
+    <div class="stack">
+      <div>${status}</div>
+      ${lic.userName ? '<div class="small">👤 ' + esc(lic.userName) + (lic.userPhone ? ' · ' + esc(lic.userPhone) : '') + '</div>' : ''}
+      ${lic.key ? '<div class="small muted">Key: <b>' + esc(lic.key) + '</b></div>' : ''}
+      ${isActivated() ? `
+        <div class="row gap" style="flex-wrap:wrap">
+          <button class="btn ghost sm" data-action="cloud-backup">☁️ Cloud Backup Abhi</button>
+          <button class="btn ghost sm" data-action="cloud-restore">⬇️ Cloud se Restore</button>
+          <button class="btn ghost sm" data-action="open-portal">🙍 Personal Space</button>
+          <button class="btn ghost sm" data-action="lic-logout">↩️ Logout</button>
+        </div>` : licenseFormHtml('settings')}
+    </div>
+  </div>`;
+}
+
+/* ---------------- Actions ---------------- */
+async function submitAccountLogin(form) {
+  if (licBusy) return;
+  const phoneEl = document.getElementById('licPhone');
+  const passEl = document.getElementById('licPass');
+  const phone = (phoneEl && phoneEl.value || '').trim();
+  const password = (passEl && passEl.value) || '';
+  if (!phone || !password) { toast('Number aur password dono daalein', 'error'); return; }
+  licBusy = true;
+  try {
+    const r = await api('/api/auth/login', { phone, password });
+    if (!r.ok) { toast(r.data.error || 'Login fail ho gaya', 'error'); return; }
+    lic.token = r.data.token;
+    lic.userName = (r.data.user && r.data.user.name) || '';
+    lic.userPhone = (r.data.user && r.data.user.phone) || phone;
+    saveLicense();
+
+    if (r.data.license && r.data.license.key) {
+      const act = await api('/api/activate', { token: lic.token, deviceId: ensureDeviceId() });
+      if (!act.ok) { toast(act.data.error || 'Activation fail', 'error'); return; }
+      lic.mode = 'activated';
+      lic.key = (act.data.license && act.data.license.key) || '';
+      lic.readOnly = false;
+      saveLicense();
+      hideLockOverlay();
+      await restoreFromCloud(true);
+      renderAll();
+      toast('Activate ho gaya ✅ Welcome ' + (lic.userName || '') + '!', 'success');
+    } else {
+      toast('Login ho gaya — abhi aapke account par key nahi hai', 'error');
+      openPortal();
+      renderAll();
+    }
+  } catch (e) {
+    toast('Server se baat nahi ho payi — internet check karein', 'error');
+  } finally { licBusy = false; }
+}
+
+async function submitDirectKey(form) {
+  if (licBusy) return;
+  const el = document.getElementById('licKeyInput');
+  const key = (el && el.value || '').trim();
+  if (!key) { toast('Key daalein', 'error'); return; }
+  licBusy = true;
+  try {
+    const r = await api('/api/activate', { key, deviceId: ensureDeviceId() });
+    if (!r.ok) { toast(r.data.error || 'Key activate nahi hui', 'error'); return; }
+    lic.mode = 'activated';
+    lic.key = (r.data.license && r.data.license.key) || key;
+    lic.readOnly = false;
+    saveLicense();
+    hideLockOverlay();
+    await restoreFromCloud(true);
+    renderAll();
+    toast('Key activate ho gayi ✅', 'success');
+  } catch (e) {
+    toast('Server se baat nahi ho payi — internet check karein', 'error');
+  } finally { licBusy = false; }
+}
+
+function openPortal() {
+  if (!licensingOn()) return;
+  try { window.open(apiBase() + '/portal', '_blank'); } catch (e) {}
+}
+
+function licLogout() {
+  lic = Object.assign(defaultLicense(), { deviceId: lic.deviceId });
+  saveLicense();
+  licInitStarted = false;
+  licReady = false;
+  renderAll();
+  toast('Logout ho gaya — aapka data waise hi hai', 'success');
+  maybeInitLicense();
+}
+
+/* ---------------- Cloud sync ---------------- */
+let syncTimer = null;
+
+function syncAuth() {
+  if (lic.token) return { token: lic.token };
+  if (lic.key && isActivated()) return { key: lic.key };
+  return null;
+}
+
+function queueCloudSync() {
+  if (!licensingOn() || !isActivated()) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { backupToCloud(true); }, 3000);
+}
+
+async function backupToCloud(silent) {
+  const auth = syncAuth();
+  if (!auth) { if (!silent) toast('Pehle login/activate karein', 'error'); return false; }
+  try {
+    const r = await api('/api/sync/save', Object.assign({ data: state, updatedAt: Date.now() }, auth));
+    if (!silent) toast(r.ok ? 'Cloud backup ho gaya ☁️✔' : (r.data.error || 'Backup fail'), r.ok ? 'success' : 'error');
+    return r.ok;
+  } catch (e) {
+    if (!silent) toast('Backup fail — internet check karein', 'error');
+    return false;
+  }
+}
+
+async function restoreFromCloud(silent) {
+  const auth = syncAuth();
+  if (!auth) { if (!silent) toast('Pehle login/activate karein', 'error'); return false; }
+  try {
+    const r = await api('/api/sync/load', auth);
+    if (!r.ok) { if (!silent) toast(r.data.error || 'Restore fail', 'error'); return false; }
+    const data = r.data.data;
+    if (!data || !data.months) { if (!silent) toast('Cloud par abhi koi backup nahi hai', 'error'); return false; }
+    const localEmpty = Object.keys(state.months || {}).length === 0;
+    if (silent && !localEmpty) return false;     // auto-restore sirf khali app par
+    state = {
+      months: data.months || {},
+      goals: Array.isArray(data.goals) ? data.goals : [],
+      settings: Object.assign(defaultState().settings, data.settings || {})
+    };
+    store.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+    if (!silent) toast('Cloud se data wapas aa gaya ✔', 'success');
+    return true;
+  } catch (e) {
+    if (!silent) toast('Restore fail — internet check karein', 'error');
+    return false;
+  }
+}
+
 /* ============================================================
    EVENT WIRING
    ============================================================ */
@@ -1976,6 +2415,12 @@ document.addEventListener('click', e => {
       break;
     }
     case 'confirm-no': hideConfirm(); break;
+    case 'open-license': switchView('settings'); break;
+    case 'open-portal': openPortal(); break;
+    case 'close-lock': hideLockOverlay(); break;
+    case 'lic-logout': licLogout(); break;
+    case 'cloud-backup': backupToCloud(false); break;
+    case 'cloud-restore': restoreFromCloud(false); break;
   }
 });
 
@@ -1986,6 +2431,8 @@ document.addEventListener('submit', e => {
   else if (e.target.id === 'settingsForm') saveSettingsForm();
   else if (e.target.id === 'goalForm') saveGoalForm(e.target);
   else if (e.target.id === 'contribForm') addContribution(e.target);
+  else if (e.target.id === 'licLoginForm') submitAccountLogin(e.target);
+  else if (e.target.id === 'licKeyForm') submitDirectKey(e.target);
 });
 
 document.addEventListener('input', e => {
@@ -2006,7 +2453,7 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeWizard(); hideConfirm(); closeGoalModal(); }
+  if (e.key === 'Escape') { closeWizard(); hideConfirm(); closeGoalModal(); hideLockOverlay(); }
 });
 
 document.getElementById('wizardOverlay').addEventListener('click', e => {
@@ -2021,4 +2468,5 @@ document.getElementById('goalOverlay').addEventListener('click', e => {
 
 /* ---------------- Init ---------------- */
 renderAll();
+maybeInitLicense(); /* 🔐 licensing sirf tab jab FIN.apiBase set ho */
 refreshRates(); /* 📡 internet se latest rates (fail par bundled/cached — app kabhi nahi rukti) */

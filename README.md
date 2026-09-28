@@ -151,6 +151,44 @@ App ke saare investment numbers ek hi jagah (`FINANCE_DATA` in `app.js`) mein ha
 > 3. **Ranges, not promises** — SIP projection 8%/10%/12%/15% scenario table hai, ek number nahi; 12% clearly "assumption, guarantee nahi" labeled
 > 4. **No guarantees, ever** — "guaranteed return" wali cheez SEBI rule ke khilaf hai, app isko har jagah clear karti hai
 
+## 🔐 Licensing v2 (optional — default OFF)
+
+App mein ek poora licensing system built-in hai, par **default par bilkul OFF**:
+jab tak `rates.json` ka `apiBase` khali hai, app free chalti hai — koi trial, koi
+login, koi lock nahi.
+
+Owner jab `server/` ko deploy karke URL `rates.json` mein daal deta hai, tab ye
+sab ON ho jata hai:
+
+- **7-din free trial** — server-side, per-device; ek hi network (IP) par max 3 trials
+- **Read-only lock** — trial khatam hone par sirf *editing* band hoti hai;
+  user ka poora data surakshit rehta hai, dikhta rehta hai, kabhi delete nahi hota
+- **Accounts (v2)** — mobile number + password se login (scrypt hashed passwords,
+  hashed session tokens, 30-din session)
+- **Personal Space portal** (`/portal`) — Hindi UI: login/register, apni key dekhna,
+  UPI payment details, “Maine Payment Kar Diya” button, backup download
+- **Telegram approve** — payment claim aate hi owner ke Telegram par
+  **[✅ Approve - Key Do] / [❌ Reject]** buttons; approve karte hi user ko
+  **per-user (account-bound) key** mil jati hai
+- **Per-user keys** — account-bound key type karke chori nahi ki ja sakti
+  (“Ye key ek account se judi hai — app mein login karein”)
+- **Direct keys (v1 legacy)** — bina account ke keys, IP + device par bind,
+  admin panel se generate / block / IP reset
+- **Cloud sync** — har change par 3s debounce backup; login karte hi doosre
+  phone par data wapas
+- **Admin panel** (`/admin?key=ADMIN_SECRET`) — stats, keys, users, purchase
+  requests, search (naam/phone/deviceId), block/unblock, Reset IP, DB export
+  (passwords sirf hash form mein)
+
+Poora setup (Render deploy, env vars, Telegram bot, roz-ka-kaam table):
+👉 **[DEPLOYMENT.md](DEPLOYMENT.md)**
+
+```bash
+npm install
+npm test        # app tests (jsdom) + server e2e tests
+npm start       # licensing server local par
+```
+
 ## 🗺️ Future Ideas
 
 - [ ] Bank SMS se automatic expense import

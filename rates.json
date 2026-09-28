@@ -1,5 +1,7 @@
 {
   "schemaVersion": 1,
+  "apiBase": "",
+  "supportWhatsapp": "",
   "manualVerifiedOn": "25 Sep 2026",
   "manualVerifiedOnISO": "2026-09-25",
   "auto": null,
@@ -10,7 +12,11 @@
     "dicgc": "₹5 lakh / depositor / bank"
   },
   "liquidFunds": "≈ 6.4 – 6.6% (abhi ka 1-saal average)",
-  "tbill": { "d91": 5.4, "d182": 5.8, "d364": 6.1 },
+  "tbill": {
+    "d91": 5.4,
+    "d182": 5.8,
+    "d364": 6.1
+  },
   "rd": "≈ 6.5 – 7.5%",
   "arbitrage": "≈ 6 – 7.5%",
   "nifty": {
@@ -29,12 +35,33 @@
     "debtFunds": "Slab rate (Apr 2023 ke baad khareede gaye debt funds)"
   },
   "sources": [
-    ["T-Bill yields (91/182/364 din)", "CCIL indicative yields — 24 Sep 2026"],
-    ["FD rates (SBI/HDFC/ICICI + small finance banks)", "Bank websites, BusinessToday — Sep 2026"],
-    ["Liquid fund returns", "Groww / Scripbox fund data — Sep 2026"],
-    ["Nifty 50 average return", "NSE Nifty 50 Factsheet (Jun 2026) / Whitepaper 2026"],
-    ["SGB status", "RBI / Finance Ministry post-Budget briefing"],
-    ["Tax rules FY 2026-27", "Income Tax Act (via TaxGuru / ClearTax)"],
-    ["Repo rate", "RBI MPC — Sep 2026"]
+    [
+      "T-Bill yields (91/182/364 din)",
+      "CCIL indicative yields — 24 Sep 2026"
+    ],
+    [
+      "FD rates (SBI/HDFC/ICICI + small finance banks)",
+      "Bank websites, BusinessToday — Sep 2026"
+    ],
+    [
+      "Liquid fund returns",
+      "Groww / Scripbox fund data — Sep 2026"
+    ],
+    [
+      "Nifty 50 average return",
+      "NSE Nifty 50 Factsheet (Jun 2026) / Whitepaper 2026"
+    ],
+    [
+      "SGB status",
+      "RBI / Finance Ministry post-Budget briefing"
+    ],
+    [
+      "Tax rules FY 2026-27",
+      "Income Tax Act (via TaxGuru / ClearTax)"
+    ],
+    [
+      "Repo rate",
+      "RBI MPC — Sep 2026"
+    ]
   ]
 }

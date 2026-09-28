@@ -385,3 +385,21 @@ table.table tr:last-child td { border-bottom: none; }
 .mt8 { margin-top: 8px; }
 .center { text-align: center; }
 .link-btn { background: none; border: none; color: var(--brand-dark); font-weight: 800; cursor: pointer; font-size: 13.5px; text-decoration: underline; font-family: inherit; }
+
+
+/* ============================================================
+   LICENSING UI (trial banner, lock overlay, license form)
+   ============================================================ */
+.lic-banner { border-left: 4px solid var(--brand, #0b6b5a); }
+.lic-banner.warn { border-left-color: #e0a34a; }
+.lic-banner.danger { border-left-color: #c0392b; }
+.lic-banner b { display: block; margin-bottom: 4px; }
+
+.lock-overlay { z-index: 60; backdrop-filter: blur(3px); }
+.lock-overlay .lock-modal { max-width: 420px; width: 100%; }
+.lock-title { font-size: 19px; font-weight: 800; margin-bottom: 6px; }
+
+.lic-form .field { margin-bottom: 10px; }
+.lic-details { border: 1px solid var(--line, #e2e8e6); border-radius: 10px; padding: 10px 12px; }
+.lic-details summary { cursor: pointer; font-size: 14px; }
+a.btn { display: block; text-align: center; text-decoration: none; }

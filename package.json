@@ -1,0 +1,15 @@
+{
+  "name": "paisaguru",
+  "version": "2.0.0",
+  "private": true,
+  "description": "PaisaGuru — Monthly Expense Tracker & Smart Saving Advisor (app + licensing server)",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "test": "npm run test:app && npm run test:server",
+    "test:app": "node --test tests/app.test.js",
+    "test:server": "node --test server/test.mjs"
+  },
+  "devDependencies": { "jsdom": "^26.0.0" },
+  "engines": { "node": ">=18" }
+}
