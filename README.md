@@ -128,7 +128,7 @@ User ko kuch nahi karna padta — internet on karo, bas:
 
 **Manual update** (FD/Nifty/tax jaise curated numbers): bas `rates.json` edit karke push kar do — saare users ko agli app-load par turant naya data mil jayega (code change ki zaroorat nahi).
 
-> ⚠️ Note: GitHub ka schedule sirf **default branch (main)** par chalta hai — workflow main mein merge hone ke baad activate hota hai. Manual run kabhi bhi ho sakta hai (Actions tab → Run workflow).
+> ⚠️ Note: GitHub ki security policy bot ko workflow files push karne nahi deti — isliye setup ke liye **`.github/WORKFLOW-SETUP.md`** kholen (2-minute ka copy-paste step, sirf ek baar karna hai). Uske baad har Somwar robot khud rates update karega.
 
 ## 📚 Data Verification (25 Sep 2026)
 
