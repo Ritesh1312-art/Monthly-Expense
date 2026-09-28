@@ -2,7 +2,7 @@
 
 Ye guide owner ke liye hai. App (frontend) GitHub Pages par free chalti hai; ye
 guide sirf **licensing server** (trial, keys, accounts, portal, Telegram approve,
-cloud backup) ke liye hai.
+cloud backup, forgot password email OTP) ke liye hai.
 
 > ⚠️ Jab tak `rates.json` mein `apiBase` **khali** hai, app bilkul FREE mode mein
 > chalti hai — koi trial, koi lock, koi login nahi. Licensing tabhi ON hoti hai
@@ -38,6 +38,12 @@ cloud backup) ke liye hai.
    | `UPI_ID` | ❌ | `ritesh@okhdfcbank` | Portal par dikhta hai |
    | `UPI_NAME` | ❌ | `Ritesh` | UPI account ka naam |
    | `PRICE_LABEL` | ❌ | `₹299 / saal` | Portal par price text |
+   | `GMAIL_USER` | ❌ | `aapka-email@gmail.com` | OTP bhejne wala Gmail address |
+   | `GMAIL_APP_PASSWORD` | ❌ | `abcdefghijklmnop` | 16-digit Google App Password |
+   | `OTP_MINUTES` | ❌ | `10` | OTP validity (default: 10 min) |
+   | `OTP_MAX_PER_DAY` | ❌ | `5` | Ek account par roz max OTP (default: 5) |
+   | `OTP_COOLDOWN_SEC` | ❌ | `60` | OTP requests ke beech seconds (default: 60) |
+   | `OTP_MAX_ATTEMPTS` | ❌ | `5` | Galat OTP attempts limit (default: 5) |
 
 5. **Disk** add karein (Render → Disks): Mount path `/var/data`, size 1 GB.
    Iske bina restart par DB udd jayega.
@@ -45,7 +51,7 @@ cloud backup) ke liye hai.
 
 ### Health check
 ```
-https://<your-url>/api/health   →  { "ok": true, "telegram": true, ... }
+https://<your-url>/api/health   →  { "ok": true, "telegram": true, "mail": true, ... }
 ```
 
 ---
@@ -86,16 +92,42 @@ Token na ho to server bilkul theek chalta hai, bas Telegram OFF rehta hai.
 
 ---
 
+## 3b. Gmail OTP setup (Password reset ke liye — 2 minute)
+
+Password reset ke liye app free Gmail SMTP use karti hai (instant 6-digit email OTP):
+
+1. Apne Google Account par jayein: **Manage your Google Account → Security**
+2. **2-Step Verification** ON karein (agar pehle se nahi hai)
+3. **App passwords** search karein (ya Security → 2-Step Verification → App passwords)
+4. App name: `PaisaGuru` → **Create** → 16-akshar ka App Password milta hai (jaise `abcd efgh ijkl mnop`)
+5. Render env vars mein daalein:
+
+   | Key | Example | Kaam |
+   |---|---|---|
+   | `GMAIL_USER` | `aapka-email@gmail.com` | OTP bhejne wala Gmail account |
+   | `GMAIL_APP_PASSWORD` | `abcdefghijklmnop` | 16-digit Google App Password (spaces hata kar) |
+   | `OTP_MINUTES` | `10` | OTP kitne minute valid rahega (default 10) |
+   | `OTP_MAX_PER_DAY` | `5` | Ek account par roz max kitne OTP (default 5) |
+   | `OTP_COOLDOWN_SEC` | `60` | Do OTP ke beech minimum second (default 60) |
+   | `OTP_MAX_ATTEMPTS` | `5` | Galat OTP attempts limit (default 5) |
+
+> 💡 **Graceful fallback:** Agar `GMAIL_USER` ya `GMAIL_APP_PASSWORD` set nahi hai,
+> to server bina kisi error ke normal chalta rehta hai, bas email feature OFF rehta hai.
+
+---
+
 ## 4. User ka flow (jo customer karega)
 
 1. App kholi → 7 din ka free trial apne aap shuru
 2. Trial khatam → app **read-only** ho jati hai (data safe rehta hai)
 3. Lock screen par → “Personal Space / Key Kharido” → portal khulta hai
-4. Portal par: naya account (naam, mobile, password) → UPI details dikhte hain
+4. Portal par: naya account (naam, mobile, email, password) → UPI details dikhte hain
 5. Payment karke **“Maine Payment Kar Diya”** dabata hai
 6. Aapke Telegram par request aati hai → **Approve** ✅
 7. User app mein wahi mobile/password se login → key apne aap lag jati hai +
    cloud backup restore ho jata hai
+8. Password bhoolne par: Portal par “Password Bhool Gaye?” → OTP mangwaya →
+   email par 6-digit OTP aaya → naya password set → turant login
 
 ---
 
@@ -109,8 +141,8 @@ Token na ho to server bilkul theek chalta hai, bas Telegram OFF rehta hai.
 | Kisi user ko seedhe key dena | Admin → Users | 🎁 Key Do |
 | User ka phone/ghar badal gaya | Admin → Keys | ♻️ Reset IP |
 | Key chori/misuse | Admin → Keys | Block / Unblock |
-| Kisi ko dhoondhna | Admin → Keys search | naam / phone / deviceId / key |
-| Poora data backup | Admin → Export | passwords sirf hash form mein |
+| Kisi ko dhoondhna | Admin → Keys search | naam / phone / email / deviceId / key |
+| Poora data backup | Admin → Export | passwords salt:hash, OTPs sha256 hash |
 
 ---
 
@@ -141,5 +173,6 @@ npm test        # app (jsdom) + server (e2e) — dono suites
 - Password `scrypt` (N=16384) se hash hota hai, verify `timingSafeEqual` se —
   plaintext password kahin store/export nahi hota
 - Session token sirf **sha256 hash** ke roop mein DB mein rehta hai
+- OTP DB mein sirf **sha256 hash** store hota hai (10 min expiry, 1-time use, 5-attempt block)
 - Admin panel `ADMIN_SECRET` se protected hai — lamba random string rakhein
 - Har key IP + device se bind hoti hai; naye network par owner reset zaroori

@@ -2171,6 +2171,7 @@ function licenseFormHtml(where) {
       <button class="btn primary block" type="submit">🔑 Login karke Activate karein</button>
     </form>
 
+    <button class="btn ghost block mt8" data-action="open-portal-forgot">❓ Password bhool gaye?</button>
     <button class="btn ghost block mt8" data-action="open-portal">🛒 Personal Space / Key Kharido</button>
 
     <details class="lic-details mt8">
@@ -2296,9 +2297,10 @@ async function submitDirectKey(form) {
   } finally { licBusy = false; }
 }
 
-function openPortal() {
+function openPortal(tab) {
   if (!licensingOn()) return;
-  try { window.open(apiBase() + '/portal', '_blank'); } catch (e) {}
+  const target = tab ? '/portal#' + encodeURIComponent(tab) : '/portal';
+  try { window.open(apiBase() + target, '_blank'); } catch (e) {}
 }
 
 function licLogout() {
@@ -2417,6 +2419,7 @@ document.addEventListener('click', e => {
     case 'confirm-no': hideConfirm(); break;
     case 'open-license': switchView('settings'); break;
     case 'open-portal': openPortal(); break;
+    case 'open-portal-forgot': openPortal('forgot'); break;
     case 'close-lock': hideLockOverlay(); break;
     case 'lic-logout': licLogout(); break;
     case 'cloud-backup': backupToCloud(false); break;

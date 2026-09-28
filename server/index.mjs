@@ -1,5 +1,5 @@
 /* ============================================================
-   PaisaGuru Licensing Server (v1 + v2)
+   PaisaGuru Licensing Server (v1 + v2 + Forgot Password)
    ------------------------------------------------------------
    Pure Node.js (node:http) — koi framework nahi, koi npm
    dependency nahi. DB = ek JSON file (DATA_DIR/db.json).
@@ -9,6 +9,8 @@
    v2 : user accounts (phone + password), user portal, Telegram
         approve buttons se per-user (account-bound) key, aur
         cloud sync (backup/restore).
+   v2.1: Forgot password via free Gmail SMTP email OTP (instant,
+        owner-free) + portal reset flow.
    ============================================================ */
 
 import http from 'node:http';
@@ -17,6 +19,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { adminPage } from './admin.mjs';
 import { portalPage } from './portal.mjs';
+import { mailOn, sendOtpMail, maskEmail, isValidEmail } from './mail.mjs';
 
 /* ---------------- Env ---------------- */
 const PORT = Number(process.env.PORT || 3000);
@@ -31,13 +34,18 @@ const UPI_ID = process.env.UPI_ID || '';
 const UPI_NAME = process.env.UPI_NAME || '';
 const PRICE_LABEL = process.env.PRICE_LABEL || '\u20b9299 / saal';
 
+const OTP_MINUTES = Number(process.env.OTP_MINUTES || 10);
+const OTP_MAX_PER_DAY = Number(process.env.OTP_MAX_PER_DAY || 5);
+const OTP_COOLDOWN_SEC = Number(process.env.OTP_COOLDOWN_SEC || 60);
+const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS || 5);
+
 const DAY = 24 * 60 * 60 * 1000;
 
 /* ---------------- DB ---------------- */
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 function emptyDb() {
-  return { licenses: [], users: [], sessions: {}, trials: {}, requests: [], backups: {} };
+  return { licenses: [], users: [], sessions: {}, trials: {}, requests: [], backups: {}, otps: {} };
 }
 
 function loadDb() {
@@ -94,6 +102,18 @@ function normPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.length < 10 || digits.length > 15) return null;
   return digits;
+}
+
+function findUserByIdentifier(identifier) {
+  if (!identifier) return null;
+  const raw = String(identifier).trim();
+  const phone = normPhone(raw);
+  if (phone) {
+    const u = db.users.find(x => x.phone === phone);
+    if (u) return u;
+  }
+  const emailLower = raw.toLowerCase();
+  return db.users.find(x => x.email && x.email.toLowerCase() === emailLower) || null;
 }
 
 function ipOf(req) {
@@ -320,7 +340,14 @@ export async function handle(req, res) {
 
   /* ---------- health ---------- */
   if (p === '/api/health') {
-    return ok(res, { telegram: telegramOn(), upi: Boolean(UPI_ID), price: PRICE_LABEL, upiId: UPI_ID, upiName: UPI_NAME });
+    return ok(res, {
+      telegram: telegramOn(),
+      mail: mailOn(),
+      upi: Boolean(UPI_ID),
+      price: PRICE_LABEL,
+      upiId: UPI_ID,
+      upiName: UPI_NAME
+    });
   }
 
   /* ---------- portal backup download ---------- */
@@ -329,7 +356,7 @@ export async function handle(req, res) {
     if (!user) return fail(res, 401, 'Login karein', 'no_auth');
     const bucket = db.backups['u:' + user.id];
     const data = bucket ? bucket.data : null;
-    return send(res, 200, JSON.stringify({ ok: true, user: { name: user.name, phone: user.phone }, data }, null, 2), {
+    return send(res, 200, JSON.stringify({ ok: true, user: { name: user.name, phone: user.phone, email: user.email || null }, data }, null, 2), {
       'Content-Type': 'application/json; charset=utf-8',
       'Content-Disposition': 'attachment; filename="paisaguru-backup.json"'
     });
@@ -399,33 +426,194 @@ export async function handle(req, res) {
     const name = String(body.name || '').trim();
     const phone = normPhone(body.phone);
     const password = String(body.password || '');
+    const emailRaw = body.email ? String(body.email).trim() : '';
+
     if (!name) return fail(res, 400, 'Naam chahiye', 'bad_name');
     if (!phone) return fail(res, 400, 'Sahi mobile number daalein', 'bad_phone');
     if (password.length < 4) return fail(res, 400, 'Password kam se kam 4 akshar ka ho', 'bad_pass');
     if (db.users.some(u => u.phone === phone)) return fail(res, 409, 'Ye number pehle se registered hai', 'dup_phone');
-    const user = { id: uid('u_'), name, phone, pass: hashPass(password), key: null, createdAt: Date.now() };
+
+    let email = null;
+    if (emailRaw) {
+      if (!isValidEmail(emailRaw)) return fail(res, 400, 'Sahi email address daalein', 'bad_email');
+      email = emailRaw.toLowerCase();
+      if (db.users.some(u => u.email && u.email.toLowerCase() === email)) {
+        return fail(res, 409, 'Ye email pehle se registered hai', 'dup_email');
+      }
+    }
+
+    const user = { id: uid('u_'), name, phone, email, pass: hashPass(password), key: null, createdAt: Date.now() };
     db.users.push(user);
     const token = newSession(user.id);
     saveDb();
-    sendMessage('\ud83c\udd95 Naya user: <b>' + name + '</b>\n\ud83d\udcf1 ' + phone);
-    return ok(res, { token, user: { name: user.name, phone: user.phone }, license: null });
+    sendMessage('\ud83c\udd95 Naya user: <b>' + name + '</b>\n\ud83d\udcf1 ' + phone + (email ? '\n\ud83d\udce7 ' + email : ''));
+    return ok(res, { token, user: { name: user.name, phone: user.phone, email: user.email }, license: null });
   }
 
   if (p === '/api/auth/login') {
-    const phone = normPhone(body.phone);
-    const user = phone ? db.users.find(u => u.phone === phone) : null;
+    const loginInput = String(body.phone || body.identifier || body.email || '').trim();
+    const phone = normPhone(loginInput);
+    const user = phone
+      ? db.users.find(u => u.phone === phone)
+      : db.users.find(u => u.email && u.email.toLowerCase() === loginInput.toLowerCase());
+
     if (!user || !verifyPass(String(body.password || ''), user.pass)) {
       return fail(res, 401, 'Number ya password galat hai', 'bad_login');
     }
     const token = newSession(user.id);
     saveDb();
-    return ok(res, { token, user: { name: user.name, phone: user.phone }, license: publicLicense(licenseOfUser(user)) });
+    return ok(res, {
+      token,
+      user: { name: user.name, phone: user.phone, email: user.email || null },
+      license: publicLicense(licenseOfUser(user))
+    });
   }
 
   if (p === '/api/auth/me') {
     const user = userFromToken(body.token);
     if (!user) return fail(res, 401, 'Session khatam', 'no_auth');
-    return ok(res, { user: { name: user.name, phone: user.phone }, license: publicLicense(licenseOfUser(user)) });
+    return ok(res, {
+      user: { name: user.name, phone: user.phone, email: user.email || null },
+      license: publicLicense(licenseOfUser(user))
+    });
+  }
+
+  if (p === '/api/auth/email') {
+    const user = userFromToken(body.token);
+    if (!user) return fail(res, 401, 'Session khatam', 'no_auth');
+    const emailRaw = String(body.email || '').trim();
+    if (!isValidEmail(emailRaw)) return fail(res, 400, 'Sahi email address daalein', 'bad_email');
+    const email = emailRaw.toLowerCase();
+    if (db.users.some(u => u.id !== user.id && u.email && u.email.toLowerCase() === email)) {
+      return fail(res, 409, 'Ye email doosre account par registered hai', 'dup_email');
+    }
+    user.email = email;
+    saveDb();
+    return ok(res, { email: user.email, user: { name: user.name, phone: user.phone, email: user.email } });
+  }
+
+  /* ---------- forgot password & OTP ---------- */
+  if (p === '/api/auth/forgot') {
+    const identifier = String(body.identifier || body.phone || body.email || body.login || '').trim();
+    if (!identifier) return fail(res, 400, 'Mobile number ya email daalein', 'bad_identifier');
+
+    const user = findUserByIdentifier(identifier);
+    if (!user) {
+      // Enumeration safe generic answer
+      return ok(res, {
+        maskedEmail: null,
+        message: 'Agar account maujood hai to OTP bhej diya gaya hai'
+      });
+    }
+
+    if (!user.email) {
+      return fail(res, 400, 'Aapke account par koi email nahi juda hai — owner se sampark karein', 'no_email');
+    }
+
+    if (!db.otps) db.otps = {};
+    const prev = db.otps[user.id] || {};
+
+    // Cooldown check
+    if (prev.lastRequestedAt && (Date.now() - prev.lastRequestedAt < OTP_COOLDOWN_SEC * 1000)) {
+      const secLeft = Math.ceil((OTP_COOLDOWN_SEC * 1000 - (Date.now() - prev.lastRequestedAt)) / 1000);
+      return fail(res, 429, `Kripya ${secLeft} second intezar karein`, 'cooldown');
+    }
+
+    // Daily limit check
+    const requestsToday = (prev.requestsToday || []).filter(ts => Date.now() - ts < DAY);
+    if (requestsToday.length >= OTP_MAX_PER_DAY) {
+      return fail(res, 429, 'Aaj ki OTP limit poori ho gayi hai — kal koshish karein', 'daily_limit');
+    }
+
+    // Generate 6-digit OTP
+    const otp = String(crypto.randomInt(100000, 1000000));
+    requestsToday.push(Date.now());
+
+    db.otps[user.id] = {
+      hash: sha256(otp),
+      attempts: 0,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + OTP_MINUTES * 60 * 1000,
+      lastRequestedAt: Date.now(),
+      requestsToday
+    };
+    saveDb();
+
+    try {
+      fs.writeFileSync(path.join(DATA_DIR, 'last_otp.json'), JSON.stringify({ userId: user.id, to: user.email, otp, time: Date.now() }));
+    } catch (e) {}
+
+    // Send OTP via email (graceful fallback if mail is OFF)
+    await sendOtpMail({ to: user.email, otp, minutes: OTP_MINUTES, userName: user.name });
+    sendMessage(`\ud83d\udd11 OTP request: <b>${user.name}</b> (${user.phone} / ${maskEmail(user.email)})`);
+
+    return ok(res, {
+      email: maskEmail(user.email),
+      maskedEmail: maskEmail(user.email)
+    });
+  }
+
+  if (p === '/api/auth/reset') {
+    const identifier = String(body.identifier || body.phone || body.email || body.login || '').trim();
+    if (!identifier) return fail(res, 400, 'Mobile number ya email daalein', 'bad_identifier');
+
+    const user = findUserByIdentifier(identifier);
+    if (!user) return fail(res, 404, 'Account nahi mila', 'user_not_found');
+
+    const otp = String(body.otp || '').trim();
+    if (!otp) return fail(res, 400, 'OTP daalein', 'bad_otp');
+
+    const password = String(body.password || body.newPassword || '');
+    if (password.length < 4) return fail(res, 400, 'Password kam se kam 4 akshar ka ho', 'bad_pass');
+
+    if (!db.otps) db.otps = {};
+    const rec = db.otps[user.id];
+    if (!rec || !rec.hash) return fail(res, 400, 'Pehle OTP request karein', 'no_otp');
+
+    if (Date.now() > rec.expiresAt) {
+      delete db.otps[user.id];
+      saveDb();
+      return fail(res, 400, 'OTP expire ho gaya hai — naya OTP mangwayein', 'otp_expired');
+    }
+
+    if (rec.attempts >= OTP_MAX_ATTEMPTS) {
+      delete db.otps[user.id];
+      saveDb();
+      return fail(res, 403, 'Bahut zyada galat koshishein — naya OTP mangwayein', 'otp_blocked');
+    }
+
+    const givenHash = sha256(otp);
+    if (givenHash !== rec.hash) {
+      rec.attempts = (rec.attempts || 0) + 1;
+      if (rec.attempts >= OTP_MAX_ATTEMPTS) {
+        delete db.otps[user.id];
+        saveDb();
+        return fail(res, 403, `${OTP_MAX_ATTEMPTS} galat koshishein ho gayi hain — naya OTP mangwayein`, 'otp_blocked');
+      }
+      saveDb();
+      return fail(res, 400, `OTP galat hai (koshish ${rec.attempts}/${OTP_MAX_ATTEMPTS})`, 'bad_otp');
+    }
+
+    // OTP verified successfully — one-time use
+    delete db.otps[user.id];
+    user.pass = hashPass(password);
+
+    // Invalidate all old sessions of this user
+    for (const tokenHash of Object.keys(db.sessions)) {
+      if (db.sessions[tokenHash].userId === user.id) {
+        delete db.sessions[tokenHash];
+      }
+    }
+
+    const token = newSession(user.id);
+    saveDb();
+    sendMessage(`\ud83d\udd10 Password reset: <b>${user.name}</b> (${user.phone})`);
+
+    return ok(res, {
+      token,
+      user: { name: user.name, phone: user.phone, email: user.email || null },
+      license: publicLicense(licenseOfUser(user))
+    });
   }
 
   /* ---------- cloud sync ---------- */
@@ -495,13 +683,18 @@ async function adminApi(req, res, url, p) {
     const q = (url.searchParams.get('q') || '').trim().toLowerCase();
     let list = db.licenses.map(l => {
       const u = l.userId ? db.users.find(x => x.id === l.userId) : null;
-      return Object.assign({}, l, { userName: u ? u.name : '', userPhone: u ? u.phone : '' });
+      return Object.assign({}, l, {
+        userName: u ? u.name : '',
+        userPhone: u ? u.phone : '',
+        userEmail: u && u.email ? u.email : ''
+      });
     });
     if (q) {
       list = list.filter(l =>
         l.key.toLowerCase().includes(q) ||
         String(l.userName).toLowerCase().includes(q) ||
         String(l.userPhone).includes(q) ||
+        String(l.userEmail).toLowerCase().includes(q) ||
         (l.devices || []).some(d => String(d).toLowerCase().includes(q))
       );
     }
@@ -509,7 +702,16 @@ async function adminApi(req, res, url, p) {
   }
 
   if (p === '/api/admin/users') {
-    return ok(res, { users: db.users.map(u => ({ id: u.id, name: u.name, phone: u.phone, key: u.key, createdAt: u.createdAt })) });
+    return ok(res, {
+      users: db.users.map(u => ({
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        email: u.email || null,
+        key: u.key,
+        createdAt: u.createdAt
+      }))
+    });
   }
 
   if (p === '/api/admin/requests') {
@@ -522,7 +724,7 @@ async function adminApi(req, res, url, p) {
   }
 
   if (p === '/api/admin/export') {
-    return ok(res, { db });   // passwords sirf salt:hash form mein hain
+    return ok(res, { db });   // passwords sirf salt:hash form mein hain, OTPs sirf sha256 hash
   }
 
   if (req.method !== 'POST') return fail(res, 404, 'Not found', 'not_found');
@@ -589,7 +791,7 @@ if (isMain) {
   const server = createServer();
   server.listen(PORT, '0.0.0.0', () => {
     console.log('PaisaGuru licensing server: http://0.0.0.0:' + PORT);
-    console.log('Telegram: ' + (telegramOn() ? 'ON' : 'OFF') + ' | data: ' + DB_FILE);
+    console.log('Telegram: ' + (telegramOn() ? 'ON' : 'OFF') + ' | Mail: ' + (mailOn() ? 'ON' : 'OFF') + ' | data: ' + DB_FILE);
   });
   if (telegramOn()) {
     pollTimer = setInterval(() => { pollTelegram().catch(() => {}); }, 3000);
@@ -597,4 +799,7 @@ if (isMain) {
   }
 }
 
-export const _internals = { db, genKey, hashPass, verifyPass, normPhone, approveRequest, rejectRequest };
+export const _internals = {
+  db, genKey, hashPass, verifyPass, normPhone, approveRequest, rejectRequest,
+  mailOn, sendOtpMail, maskEmail, isValidEmail, findUserByIdentifier
+};

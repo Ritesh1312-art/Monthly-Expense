@@ -741,3 +741,26 @@ test('license form primary = login form', async () => {
   const html = app.win.licenseFormHtml('settings');
   assert.ok(html.indexOf('licLoginForm') < html.indexOf('licKeyForm'));
 });
+test('license form mein forgot password button hai (settings & lock)', async () => {
+  const app = await makeAppReady({ apiBase: 'https://lic.test', routes: okRoutes() });
+  assert.match(app.win.licenseFormHtml('settings'), /data-action="open-portal-forgot"/);
+  assert.match(app.win.licenseFormHtml('lock'), /data-action="open-portal-forgot"/);
+});
+test('openPortal "forgot" tab ke saath #forgot URL kholta hai', async () => {
+  const app = await makeAppReady({ apiBase: 'https://lic.test', routes: okRoutes() });
+  app.win.openPortal('forgot');
+  assert.ok(app.calls.some(c => c.url === 'OPEN:https://lic.test/portal#forgot'));
+});
+test('FREE mode: openPortal "forgot" kuch nahi karta', () => {
+  const app = makeApp();
+  app.win.openPortal('forgot');
+  assert.ok(!app.calls.some(c => c.url && c.url.startsWith('OPEN:')));
+});
+test('open-portal-forgot button click portal #forgot kholta hai', async () => {
+  const app = await makeAppReady({ apiBase: 'https://lic.test', routes: okRoutes() });
+  app.win.renderSettings();
+  const btn = app.doc.querySelector('[data-action="open-portal-forgot"]');
+  assert.ok(btn);
+  btn.click();
+  assert.ok(app.calls.some(c => c.url === 'OPEN:https://lic.test/portal#forgot'));
+});
