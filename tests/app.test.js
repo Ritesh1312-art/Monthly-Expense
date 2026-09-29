@@ -764,3 +764,101 @@ test('open-portal-forgot button click portal #forgot kholta hai', async () => {
   btn.click();
   assert.ok(app.calls.some(c => c.url === 'OPEN:https://lic.test/portal#forgot'));
 });
+
+/* ============================================================
+   11. VERIFIED INVEST LINKS (suggestion → direct link)
+   ============================================================ */
+test('quickOptions: har option ke saath verified link hai', () => {
+  const { win } = makeApp();
+  win.quickOptions().forEach(o => assert.ok(Array.isArray(o.links) && o.links.length > 0));
+});
+test('buildAllocation: har card ke saath verified link hai', () => {
+  const { win } = makeApp({ storage: seeded() });
+  win.buildAllocation(20000).forEach(a => assert.ok(Array.isArray(a.links) && a.links.length > 0));
+});
+test('invLinksHtml: real https anchor banata hai, naye tab mein khulta hai', () => {
+  const { win } = makeApp();
+  const html = win.invLinksHtml(['fd']);
+  assert.match(html, /href="https:\/\/groww\.in\/fixed-deposit"/);
+  assert.match(html, /target="_blank"/);
+  assert.match(html, /rel="noopener noreferrer"/);
+});
+test('invLinksHtml: khaali/unknown key par kuch nahi', () => {
+  const { win } = makeApp();
+  assert.equal(win.invLinksHtml([]), '');
+  assert.equal(win.invLinksHtml(['nonexistent']), '');
+});
+test('renderAdvice: Salah tab mein invest links dikhte hain', () => {
+  const { win, doc } = makeApp({ storage: seeded() });
+  win.switchView('advice');
+  assert.match(doc.getElementById('view-advice').innerHTML, /invest-link/);
+});
+test('invLinksHtml: alag alag investment ke sahi verified domains', () => {
+  const { win } = makeApp();
+  assert.match(win.invLinksHtml(['sip']), /groww\.in/);
+  assert.match(win.invLinksHtml(['tbill']), /rbiretaildirect\.org\.in/);
+  assert.match(win.invLinksHtml(['ppf']), /indiapost\.gov\.in/);
+  assert.match(win.invLinksHtml(['tax']), /incometax\.gov\.in/);
+});
+
+/* ============================================================
+   12. MULTI-USER PROFILES (login gate, alag data)
+   ============================================================ */
+test('solo user (0 profiles): koi login gate nahi, app turant khulti hai', () => {
+  const { win, doc } = makeApp();
+  assert.equal(win.getProfiles().length, 0);
+  assert.equal(win.needsProfileGate(), false);
+  assert.equal(doc.getElementById('appShell').classList.contains('hidden'), false);
+  assert.equal(doc.getElementById('authOverlay').classList.contains('hidden'), true);
+});
+test('solo user ka data purani "paisaguru_v1" key mein hi rehta hai (backward compatible)', () => {
+  const { win } = makeApp({ storage: seeded() });
+  assert.equal(win.monthData('2026-09').salary, 50000);
+  assert.equal(win.currentStorageKey(), 'paisaguru_v1');
+});
+test('createProfile: sabse pehla profile hamesha id "default" leta hai', () => {
+  const { win } = makeApp();
+  const p = win.createProfile('Ritesh', '🙂', '');
+  assert.equal(p.id, 'default');
+});
+test('createProfile: doosra profile alag/unique id leta hai', () => {
+  const { win } = makeApp();
+  win.createProfile('Ritesh', '🙂', '');
+  const p2 = win.createProfile('Sonam', '👩', '');
+  assert.notEqual(p2.id, 'default');
+  assert.equal(win.getProfiles().length, 2);
+});
+test('2+ profiles ke baad fresh session mein login gate chahiye hota hai', () => {
+  const { win } = makeApp();
+  win.createProfile('Ritesh', '🙂', '');
+  win.createProfile('Sonam', '👩', '');
+  win.sessionStorage.removeItem('pg_active_session'); /* naya/fresh session simulate */
+  assert.equal(win.needsProfileGate(), true);
+});
+test('profile ka data alag storage key mein jata hai — merge nahi hota', () => {
+  const { win } = makeApp();
+  const p1 = win.createProfile('Ritesh', '🙂', '');
+  const p2 = win.createProfile('Sonam', '👩', '');
+  assert.equal(win.profileStorageKey(p1.id), 'paisaguru_v1');
+  assert.equal(win.profileStorageKey(p2.id), 'paisaguru_v1__' + p2.id);
+  assert.notEqual(win.profileStorageKey(p1.id), win.profileStorageKey(p2.id));
+});
+test('pinHash: sahi PIN match karta hai, galat nahi', () => {
+  const { win } = makeApp();
+  const h = win.pinHash('1234');
+  assert.equal(h, win.pinHash('1234'));
+  assert.notEqual(h, win.pinHash('9999'));
+});
+test('removeProfile: profile aur uska data dono hat jaate hain', () => {
+  const { win } = makeApp();
+  const p1 = win.createProfile('Ritesh', '🙂', '');
+  const p2 = win.createProfile('Sonam', '👩', '');
+  win.localStorage.setItem(win.profileStorageKey(p2.id), JSON.stringify({ months: { '2026-09': { salary: 1 } } }));
+  win.removeProfile(p2.id);
+  assert.equal(win.getProfiles().length, 1);
+  assert.equal(win.localStorage.getItem(win.profileStorageKey(p2.id)), null);
+});
+test('usersCardHtml: "Naya User" add karne ka button hamesha dikhta hai', () => {
+  const { win } = makeApp({ storage: seeded() });
+  assert.match(win.usersCardHtml(), /profile-add-open/);
+});

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Privacy Policy — PaisaGuru</title>
+  <meta name="description" content="PaisaGuru aapka data kaise store/use karta hai — poori jaankari." />
+  <meta name="theme-color" content="#0b6b5a" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .privacy-topbar {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px;
+      background: linear-gradient(120deg, var(--brand-deep), var(--brand) 55%, var(--brand-2));
+      background-size: 180% 180%; animation: gradientShift 12s ease infinite;
+      color: #fff; box-shadow: 0 4px 24px -8px rgba(76, 39, 184, .55);
+    }
+    .privacy-topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; }
+    .privacy-back {
+      background: rgba(255,255,255,.16); color: #fff; border: none; border-radius: 999px;
+      padding: 8px 14px; font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .privacy-back:hover { background: rgba(255,255,255,.28); }
+    .privacy-wrap { max-width: 720px; margin: 0 auto; padding: 20px 14px 60px; display: flex; flex-direction: column; gap: 14px; }
+    .privacy-wrap h1 { font-size: 22px; margin-bottom: 4px; }
+    .privacy-wrap h2 { font-size: 16px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+    .privacy-wrap p, .privacy-wrap li { font-size: 14px; color: var(--ink); line-height: 1.6; }
+    .privacy-wrap ul { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .updated-chip {
+      display: inline-block; background: var(--brand-light); color: var(--brand-dark);
+      font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="bgfx" aria-hidden="true"></div>
+
+  <header class="privacy-topbar">
+    <a class="privacy-back" href="index.html">← App par wapas</a>
+    <div class="brand" style="margin-left:auto"><span>💰</span><span>PaisaGuru</span></div>
+  </header>
+
+  <script>
+    /* Same theme jo app mein set kiya tha, yahan bhi apply karein taaki look consistent rahe */
+    (function () {
+      try {
+        var saved = localStorage.getItem('pg_theme');
+        if (!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) saved = 'dark';
+        document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
+      } catch (e) {}
+    })();
+  </script>
+
+  <main class="privacy-wrap">
+    <div>
+      <h1>🔒 Privacy Policy</h1>
+      <span class="updated-chip">Last updated: 29 September 2026</span>
+    </div>
+
+    <div class="card">
+      <h2>📌 Sabse Zaroori Baat, Seedhe Shabdon Mein</h2>
+      <p>PaisaGuru ek <b>local-first</b> app hai. Matlab: aapki salary, kharche, goals aur settings — sab kuch <b>sirf aapke apne browser</b> mein (<code>localStorage</code>) save hota hai. Default setup mein ye data kabhi kisi server par nahi jaata, na hum ise dekh sakte hain, na koi teesra.</p>
+    </div>
+
+    <div class="card">
+      <h2>🗂️ Hum Kya Data Store Karte Hain (Aapke Device Par)</h2>
+      <ul>
+        <li><b>Financial data:</b> salary, planned budget, kharche ki entries, saving goals, emergency fund status — sab <code>localStorage</code> mein.</li>
+        <li><b>Profile info:</b> agar aap multi-user feature use karte hain, to naam, icon aur (optional) PIN — PIN plain text mein nahi, ek hashed form mein store hota hai, aur ye bhi sirf isi device/browser mein rehta hai.</li>
+        <li><b>Theme preference:</b> dark/light mode ka choice bhi localStorage mein.</li>
+        <li><b>Session info:</b> kaunsa profile abhi active hai — ye <code>sessionStorage</code> mein, sirf us tab ke liye (tab band karte hi clear ho jaata hai).</li>
+      </ul>
+      <p>Ye sab kabhi kisi network request mein bahar nahi jaata — hum tracking, analytics, ya ads ka koi bhi third-party script use nahi karte.</p>
+    </div>
+
+    <div class="card">
+      <h2>☁️ Optional Features Jo Internet Use Karte Hain</h2>
+      <p>Kuch features tabhi kaam karte hain jab app ke owner ne backend enable kiya ho (default mein OFF hota hai) — inhe use karna hamesha aapki apni choice hai:</p>
+      <ul>
+        <li><b>Account Login / License:</b> agar ye feature ON hai aur aap login/activate karte hain, to sirf aapka email aur license status verify karne ke liye backend server ko bheja jaata hai.</li>
+        <li><b>Cloud Backup:</b> agar aap khud "Cloud Backup" button dabate hain, tabhi aapka poora data (months, goals, settings) encrypted connection (HTTPS) ke through backend par save hota hai — taaki aap use naye device par restore kar sakein. Ye automatic nahi hai, sirf aapke button dabane par hota hai.</li>
+        <li><b>Live Rates:</b> app kabhi-kabhi latest FD/PPF/mutual-fund rates dikhane ke liye ek chhoti si rates file fetch karta hai — isme aapki koi personal/financial information nahi bheji jaati, sirf rates file download hoti hai.</li>
+        <li><b>Voice Input (🎤):</b> agar aap "Bolkar Kharcha Add Karein" use karte hain, to ye aapke browser ke built-in Speech Recognition (Web Speech API) se chalta hai. Kuch browsers (jaise Chrome) audio ko process karne ke liye apni khud ki speech-service (e.g. Google) use karte hain — ye poori tarah browser vendor ki policy par depend karta hai, PaisaGuru khud koi audio store ya bheja nahi karta.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>🔗 Verified Invest/Save Links</h2>
+      <p>"Salah" tab mein diye gaye investment/saving links (jaise PPF, FD, mutual funds) aapko seedhe us official/verified website par le jaate hain (naye tab mein). Ek baar aap us site par chale jaayein, uski apni privacy policy लागू hoti hai — PaisaGuru uska zimmedar nahi hai.</p>
+    </div>
+
+    <div class="card">
+      <h2>🍪 Cookies, Ads, Tracking</h2>
+      <p>PaisaGuru <b>koi cookies, advertising SDK, ya third-party analytics/tracking script</b> use nahi karta. Koi bhi data kisi marketing/ad company ko nahi becha ya share kiya jaata.</p>
+    </div>
+
+    <div class="card">
+      <h2>🗑️ Apna Data Delete Kaise Karein</h2>
+      <ul>
+        <li>App ke andar: <b>Settings → 💾 Data → Saara Data Delete Karein</b> button se sab kuch turant clear ho jaata hai.</li>
+        <li>Alternative: apne browser ki settings se is website ka "Site Data" / "Local Storage" clear kar dein — usse bhi sab kuch mit jaata hai.</li>
+        <li>Agar aapne Cloud Backup use kiya tha aur us data ko bhi delete karwana hai, to app owner se support contact ke through request karein.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>👶 Bachon Ki Privacy</h2>
+      <p>PaisaGuru ek general finance-tracking tool hai aur knowingly 13 saal se chhote bachon se koi data collect nahi karta.</p>
+    </div>
+
+    <div class="card">
+      <h2>✏️ Is Policy Mein Badlaav</h2>
+      <p>Agar future mein ye policy update hoti hai, to is page ki "Last updated" date badal jaayegi. Bada koi badlaav hone par app ke andar bhi ek notice dikhaya jaayega, jahan tak mumkin ho.</p>
+    </div>
+
+    <div class="card">
+      <h2>📩 Sawaal Hai?</h2>
+      <p>Is app ke data-handling ke baare mein koi sawaal ho to app ke Settings section mein diye gaye support contact (agar available ho) par sampark karein.</p>
+    </div>
+
+    <p class="small muted" style="text-align:center;margin-top:8px">PaisaGuru — Made with 💜 for smarter saving.</p>
+  </main>
+</body>
+</html>

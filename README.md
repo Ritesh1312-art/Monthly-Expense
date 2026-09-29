@@ -46,6 +46,23 @@ Phone chahiye? Gaadi? Trip? Goal banayein — app khud calculate karega:
 ### Plus 🧾 Kharcha Tracking
 Mahine bhar har kharcha add karein (category + note + date). Budget cross hone par turant warning milti hai.
 
+### Plus 🔗 Verified Invest/Save Links — Click Karke Seedha Invest
+Salah tab ke har suggestion (FD, SIP, T-Bill, Gold ETF, PPF, ELSS, tax filing...) ke saath ek **verified link** hota hai — click karte hi seedha us official/SEBI-registered/RBI/Govt platform par pahunch jaate hain (Groww, RBI Retail Direct, India Post, Income Tax e-Filing). App ka in platforms se koi commission/partnership nahi — sirf "kahan jaake invest karein" ka rasta dikhaya gaya hai. Invest se pehle khud bhi verify kar lein.
+
+### Plus 👥 Multiple Users, Ek Hi Device — Data Kabhi Merge Nahi Hoga
+Agar ghar mein 2-3 log isi phone/laptop par PaisaGuru use karte hain, unke liye alag-alag **profile** banayein (Settings → 👥 Users → "+ Naya User"). Har profile ka data bilkul **alag jagah** save hota hai — kabhi mix nahi hota. Jaise hi doosra profile ban jata hai, app agli baar (naye session/tab mein) khulte hi poochhegi **"Kaun Use Kar Raha Hai?"** — sahi profile choose karke hi kaam shuru hota hai, chahein to har profile par ek chhota PIN bhi laga sakte hain. Akele use karne walon ke liye kuch nahi badalta — bina kisi extra profile ke app pehle jaisi hi seedhe khul jaati hai.
+
+### Plus ⚡ Slash Commands — Power-User Ke Liye
+Kahin bhi **`/`** dabayein (ya `Ctrl+K`, ya topbar ka `/` button) — ek chhota command box khulega jisme type karke turant kaam ho jaata hai, bina menu mein ghume:
+- `/add 500 khana lunch` — turant kharcha add (amount + category auto-detect Hindi/English keywords se — jaise "khana", "petrol", "bijli", "kiraya" waghera — + baaki text note ban jaata hai)
+- `/home` `/expense` `/report` `/advice` `/settings` — kisi bhi screen par seedhe jump
+- `/goal` `/wizard` `/theme` `/export` `/import` `/user` `/logout` `/privacy` — quick actions
+- `/help` — saare commands ki list
+Arrow keys se navigate karein, Enter se run karein, Esc se band karein. Ye palette login-gate/lock screen ke dauraan nahi khulta (safe by design).
+
+### Plus 🔒 Privacy Policy Page
+Ek dedicated **`privacy.html`** page hai (Settings → 🔒 Privacy, ya `/privacy` command se) jo saaf-saaf batata hai: default mein sab data sirf aapke browser mein (localStorage) rehta hai, koi tracking/ads nahi, aur optional cloud-backup/licensing features sirf tabhi internet use karte hain jab aap khud unhe on karein.
+
 ---
 
 ## ✨ Features
@@ -60,7 +77,12 @@ Mahine bhar har kharcha add karein (category + note + date). Budget cross hone p
 | 📊 Monthly Report | Plan vs actual, MoM comparison, saving grade, 6-month trend |
 | 🤖 Insights Engine | 10+ rules wala analysis — overspend, pace, wants vs needs, emergency fund, goals |
 | 💡 Investment Salah | Emergency-fund-first allocation, SIP projections, quick-return options, 50-30-20 rule check, tax tips |
-| 🛡️ Privacy-first | Sab data **aapke browser** (localStorage) mein — koi server nahi, koi login nahi |
+| 🛡️ Privacy-first | Sab data **aapke browser** (localStorage) mein — koi server nahi |
+| 👥 Multi-User Profiles | Ghar ke sabhi log alag profile banayein — data kabhi merge nahi hota, optional PIN lock |
+| 🔗 Verified Invest Links | Har suggestion ke saath direct link — Groww / RBI Retail Direct / India Post / Income Tax |
+| 🎨 Fresh, Animated UI | Naya gradient theme, floating nav, smooth animations + 🌙 Dark Mode |
+| ⚡ Slash Commands | `/` ya `Ctrl+K` dabakar quick actions — `/add`, `/report`, `/goal`, `/theme`, waghera |
+| 🔒 Privacy Policy Page | Saaf-saaf bataata hai data kahan/kaise store hota hai — `privacy.html` |
 | 📦 Backup | JSON export / import |
 | 🎬 Demo Data | Ek click mein 3 mahine ka sample data + ek goal — app turant samajh aayegi |
 
@@ -85,9 +107,10 @@ python3 -m http.server 8000
 
 ```
 Monthly-Expense/
-├── index.html   # App ka structure (views, wizard modal, navigation)
+├── index.html   # App ka structure (views, wizard modal, navigation, command palette)
 ├── style.css    # Puri styling — mobile-first, modern
-├── app.js       # Logic: state, wizard, insights engine, investment salah
+├── app.js       # Logic: state, wizard, insights engine, investment salah, slash commands
+├── privacy.html # Standalone Privacy Policy page
 └── README.md
 ```
 
