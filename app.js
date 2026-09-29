@@ -1086,24 +1086,23 @@ function shiftMonth(delta) {
 function noDataCard() {
   const isFuture = selectedMonth > monthKey(new Date());
   return `
-  <div class="card hero">
-    <div class="hero-emoji">💵</div>
-    <div class="hero-title">${isFuture ? monthLabel(selectedMonth) + ' ki planning pehle se kar lein!' : 'Kya is mahine salary aa gayi? 🤔'}</div>
-    <div class="hero-text">
-      ${isFuture
-        ? 'Aage ka soch ke aap winner hain! Salary ka andaza lagakar plan bana lijiye — kharche control mein rahenge.'
-        : 'Salary ka amount daaliye, app khud poochhega ki paisa kaha-kaha kharch hoga — aur jo bacha, use invest karne ki sahi salah dega.'}
-    </div>
+  <div class="home-hero">
+    <div class="hero-kicker">Monthly money, simplified</div>
+    <h1 class="home-hero-title">${isFuture ? 'Kal ka plan.' : 'Har rupaya.'} <span class="gradient-text">Aapke control mein.</span></h1>
+    <p class="home-hero-text">${isFuture
+      ? monthLabel(selectedMonth) + ' ki salary aur kharchon ka smart plan abhi bana lijiye — baad mein decisions aasaan rahenge.'
+      : 'Salary enter karein, kharche plan karein aur bache hue paise ko sahi goals aur investments ki taraf le jaayein.'}</p>
+    <div class="home-hero-footer"><span class="hero-stat-chip">✨ <b>${monthLabel(selectedMonth)}</b> · plan ready karein</span></div>
     <div class="hero-actions">
-      <button class="btn primary" data-action="open-wizard">💵 Salary Received — Shuru Karein</button>
-      ${Object.keys(state.months).length === 0 ? '<button class="btn ghost" data-action="load-demo">🎬 Demo Data Dekhein (Sample)</button>' : ''}
-      <button class="btn gold" data-action="goal-new">🎯 Naya Goal Banayein (Phone, Gaadi, Trip...)</button>
+      <button class="btn cta" data-action="open-wizard">💵 Salary Received — Shuru Karein</button>
+      ${Object.keys(state.months).length === 0 ? '<button class="btn ghost" data-action="load-demo">🎬 Demo Data Dekhein</button>' : ''}
+      <button class="btn ghost" data-action="goal-new">🎯 Naya Savings Goal</button>
     </div>
   </div>`;
 }
 
 function topCTA(text) {
-  return `<button class="btn primary block" data-action="open-wizard">${text}</button>`;
+  return `<button class="btn cta block" data-action="open-wizard">${text}</button>`;
 }
 
 /* ---------------- HOME ---------------- */
@@ -1172,13 +1171,18 @@ function renderHome() {
     : '';
 
   el.innerHTML = licenseBannerHtml() + `
-  <div class="card">
-    <div class="row between">
+  <div class="home-hero">
+    <div class="home-hero-top">
       <div>
-        <div class="small muted" style="font-weight:700">Namaste${name}! 👋</div>
-        <div style="font-size:20px;font-weight:800">${monthLabel(selectedMonth)}</div>
+        <div class="hero-kicker">${monthLabel(selectedMonth)} overview</div>
+        <h1 class="home-hero-title">Namaste${name}! <span class="gradient-text">Paise ko purpose dein.</span></h1>
+        <p class="home-hero-text">Aapka monthly plan, real spending aur next best money move — sab ek jagah.</p>
       </div>
       <button class="btn ghost sm" data-action="open-wizard">✏️ Plan Edit</button>
+    </div>
+    <div class="home-hero-footer">
+      <span class="hero-stat-chip">💰 Planned bachat <b>${fmt(leftover)}</b></span>
+      <span class="hero-stat-chip">↗ <b>${pct(rate)}</b> saving rate</span>
     </div>
   </div>
 
@@ -1224,7 +1228,7 @@ function renderHome() {
     <button class="btn ghost sm block mt8" data-action="goto-view" data-view="expense">➕ Kharcha Add Karein / Pura List</button>
   </div>
 
-  <button class="btn gold block" data-action="goto-view" data-view="advice">💡 Aapke bacha hue ${fmt(leftover)} ko Invest kaise karein? — Salah Dekhein</button>
+  <button class="btn cta block" data-action="goto-view" data-view="advice">💡 Bache hue ${fmt(leftover)} ka smart plan dekhein</button>
   `;
 }
 
