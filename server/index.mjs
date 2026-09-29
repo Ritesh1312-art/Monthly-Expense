@@ -30,6 +30,7 @@ const MAX_TRIALS_PER_IP = Number(process.env.MAX_TRIALS_PER_IP || 3);
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 30);
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+const TELEGRAM_ADMIN_USER_IDS = String(process.env.TELEGRAM_ADMIN_USER_IDS || '');
 const UPI_ID = process.env.UPI_ID || '';
 const UPI_NAME = process.env.UPI_NAME || '';
 const PRICE_LABEL = process.env.PRICE_LABEL || '\u20b9299 / saal';
@@ -241,6 +242,169 @@ function sendMessage(text, extra) {
   return tg('sendMessage', Object.assign({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'HTML' }, extra || {}));
 }
 
+
+// ---------------- Telegram command control ----------------
+const TELEGRAM_ADMIN_USER_IDS = String(process.env.TELEGRAM_ADMIN_USER_IDS || '')
+  .split(',')
+  .map(x => x.trim())
+  .filter(Boolean);
+
+function telegramCommandAllowed(message) {
+  if (!telegramOn()) return false;
+  const chatId = message && message.chat && message.chat.id;
+  if (String(chatId) !== String(TELEGRAM_CHAT_ID)) return false;
+  if (!TELEGRAM_ADMIN_USER_IDS.length) return true;
+  const userId = message && message.from && message.from.id;
+  return TELEGRAM_ADMIN_USER_IDS.includes(String(userId));
+}
+
+function commandHelp() {
+  return [
+    '<b>💰 PaisaGuru Control Bot</b>',
+    '',
+    '<b>Commands</b>',
+    '/start — Bot introduction + main menu',
+    '/help — Available commands',
+    '/status — Application status',
+    '/stats — Users, trials, licenses & requests summary',
+    '/requests — Pending payment requests',
+    '/users — User/account summary',
+    '/keys — License key summary',
+    '/health — Server + Telegram + email + UPI status',
+    '/backup — Database backup status',
+    '/cancel — Cancel current action',
+  ].join('\\n');
+}
+
+function formatDate(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }); }
+  catch (e) { return new Date(ts).toISOString(); }
+}
+
+function telegramStatsText() {
+  const activeLicenses = db.licenses.filter(l => !l.blocked).length;
+  const blockedLicenses = db.licenses.filter(l => l.blocked).length;
+  const pending = db.requests.filter(r => r.status === 'pending').length;
+  const approved = db.requests.filter(r => r.status === 'approved').length;
+  const rejected = db.requests.filter(r => r.status === 'rejected').length;
+  const activeSessions = Object.values(db.sessions).filter(s => s.expiresAt > Date.now()).length;
+  return [
+    '<b>📊 PaisaGuru Stats</b>',
+    '',
+    '👥 Users: <b>' + db.users.length + '</b>',
+    '🎁 Trials: <b>' + Object.keys(db.trials).length + '</b>',
+    '🔑 Active keys: <b>' + activeLicenses + '</b>',
+    '🚫 Blocked keys: <b>' + blockedLicenses + '</b>',
+    '⏳ Pending requests: <b>' + pending + '</b>',
+    '✅ Approved requests: <b>' + approved + '</b>',
+    '❌ Rejected requests: <b>' + rejected + '</b>',
+    '🔐 Active sessions: <b>' + activeSessions + '</b>',
+  ].join('\\n');
+}
+
+function telegramRequestsText() {
+  const rows = db.requests.filter(r => r.status === 'pending');
+  if (!rows.length) return '<b>🧾 Pending Requests</b>\\n\\nKoi pending payment request nahi hai.';
+  const lines = rows.slice(-20).map((r, i) => {
+    const u = db.users.find(x => x.id === r.userId);
+    return (i + 1) + '. <b>' + (u ? escTelegram(u.name) : 'Unknown') + '</b>' +
+      (u && u.phone ? ' · ' + escTelegram(u.phone) : '') +
+      '\\n   ID: <code>' + escTelegram(r.id) + '</code>';
+  });
+  return '<b>🧾 Pending Requests (' + rows.length + ')</b>\\n\\n' + lines.join('\\n');
+}
+
+function telegramUsersText() {
+  if (!db.users.length) return '<b>👥 Users</b>\\n\\nAbhi koi user registered nahi hai.';
+  const lines = db.users.slice(-20).reverse().map((u, i) =>
+    (i + 1) + '. <b>' + escTelegram(u.name) + '</b> · ' + escTelegram(u.phone) +
+    (u.email ? '\\n   📧 ' + escTelegram(u.email) : '') +
+    (u.key ? '\\n   🔑 Key assigned' : '\\n   ⏳ No key')
+  );
+  return '<b>👥 Users (' + db.users.length + ')</b>\\n\\n' + lines.join('\\n');
+}
+
+function telegramKeysText() {
+  if (!db.licenses.length) return '<b>🔑 License Keys</b>\\n\\nAbhi koi key nahi hai.';
+  const lines = db.licenses.slice(-20).reverse().map((l, i) => {
+    const u = l.userId ? db.users.find(x => x.id === l.userId) : null;
+    return (i + 1) + '. <code>' + escTelegram(l.key) + '</code> — ' +
+      (l.blocked ? '🚫 blocked' : '✅ active') +
+      (u ? '\\n   ' + escTelegram(u.name) + ' · ' + escTelegram(u.phone) : '\\n   direct key');
+  });
+  return '<b>🔑 License Keys (' + db.licenses.length + ')</b>\\n\\n' + lines.join('\\n');
+}
+
+function escTelegram(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function telegramHealthText() {
+  return [
+    '<b>🩺 PaisaGuru Health</b>',
+    '',
+    '🟢 Server: <b>online</b>',
+    '🤖 Telegram: <b>' + (telegramOn() ? 'connected' : 'OFF') + '</b>',
+    '📧 Gmail OTP: <b>' + (mailOn() ? 'ON' : 'OFF') + '</b>',
+    '💳 UPI: <b>' + (UPI_ID ? 'configured' : 'not configured') + '</b>',
+    '💰 Price: <b>' + escTelegram(PRICE_LABEL) + '</b>',
+    '🗄️ DB: <b>' + (fs.existsSync(DB_FILE) ? 'available' : 'not created yet') + '</b>',
+    '⏱️ Checked: <b>' + formatDate(Date.now()) + '</b>',
+  ].join('\\n');
+}
+
+function telegramStatusText() {
+  return [
+    '<b>📡 PaisaGuru Status</b>',
+    '',
+    '🟢 Licensing server: <b>running</b>',
+    '🤖 Telegram integration: <b>' + (telegramOn() ? 'ON' : 'OFF') + '</b>',
+    '📧 Email OTP: <b>' + (mailOn() ? 'ON' : 'OFF') + '</b>',
+    '👥 Users: <b>' + db.users.length + '</b>',
+    '🔑 Keys: <b>' + db.licenses.length + '</b>',
+    '⏳ Pending requests: <b>' + db.requests.filter(r => r.status === 'pending').length + '</b>',
+  ].join('\\n');
+}
+
+async function handleTelegramCommand(message) {
+  if (!message || !message.text || !telegramCommandAllowed(message)) return;
+  const raw = String(message.text).trim();
+  const first = raw.split(/\\s+/)[0];
+  const command = first.replace(/^\\//, '').split('@')[0].toLowerCase();
+  if (!command) return;
+
+  const replies = {
+    start: '<b>💰 Welcome to PaisaGuru Control Bot</b>\\n\\n' +
+      'License server, users, payment requests aur system status ko Telegram se manage karein.\\n\\n' +
+      'Use /help to see all available commands.',
+    help: commandHelp(),
+    status: telegramStatusText(),
+    stats: telegramStatsText(),
+    requests: telegramRequestsText(),
+    users: telegramUsersText(),
+    keys: telegramKeysText(),
+    health: telegramHealthText(),
+    backup: '<b>💾 Database Backup Status</b>\\n\\n' +
+      'DB file: <code>' + escTelegram(DB_FILE) + '</code>\\n' +
+      'Last in-memory snapshot: <b>current</b>\\n' +
+      'Records: users ' + db.users.length + ', licenses ' + db.licenses.length + ', requests ' + db.requests.length + '.\\n\\n' +
+      'Use the Personal Space/Admin panel for an actual backup download.',
+    cancel: '✅ Koi active Telegram action nahi hai. Cancel complete.',
+  };
+
+  const text = replies[command];
+  if (!text) {
+    await sendMessage('❓ Unknown command. /help use karein.');
+    return;
+  }
+  await sendMessage(text);
+}
+
 function purchaseKeyboard(id) {
   return {
     reply_markup: {
@@ -258,10 +422,11 @@ let pollTimer = null;
 
 async function pollTelegram() {
   if (!telegramOn()) return;
-  const res = await tg('getUpdates', { offset: tgOffset, timeout: 0, allowed_updates: ['callback_query'] });
+  const res = await tg('getUpdates', { offset: tgOffset, timeout: 0, allowed_updates: ['message', 'callback_query'] });
   if (res && res.ok && Array.isArray(res.result)) {
     for (const up of res.result) {
       tgOffset = up.update_id + 1;
+      if (up.message && up.message.text) await handleTelegramCommand(up.message);
       if (up.callback_query) await handleCallback(up.callback_query);
     }
   }
