@@ -142,13 +142,21 @@ test('GET / bhi portal deta hai', async () => {
   assert.equal(r.status, 200);
   assert.match(String(r.body), /PaisaGuru/);
 });
-test('admin bina key 401', async () => {
-  assert.equal((await get('/admin')).status, 401);
+test('admin bina key password-only login screen deta hai', async () => {
+  const r = await get('/admin');
+  assert.equal(r.status, 200);
+  assert.match(String(r.body), /adminPassword/);
+  assert.equal((await post('/api/admin/login', { password: 'admin123' })).status, 200);
+  assert.equal((await post('/api/admin/login', { password: 'galat' })).status, 401);
 });
 test('admin query key se khulta hai', async () => {
   const r = await get('/admin?key=' + ADMIN);
   assert.equal(r.status, 200);
   assert.match(String(r.body), /Admin/);
+  const changed = await adminPost('/api/admin/password', { password: 'naya-admin-123' });
+  assert.equal(changed.status, 200);
+  assert.equal((await post('/api/admin/login', { password: 'naya-admin-123' })).status, 200);
+  assert.equal((await adminGet('/api/admin/stats')).status, 200); // legacy ADMIN_SECRET
 });
 test('admin panel mein Purchase Requests card', async () => {
   const r = await get('/admin?key=' + ADMIN);
