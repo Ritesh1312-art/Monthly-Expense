@@ -34,7 +34,7 @@ cloud backup, forgot password email OTP) ke liye hai.
    | `MAX_TRIALS_PER_IP` | ❌ | `3` | Ek network par max trial devices |
    | `SESSION_DAYS` | ❌ | `30` | Login kitne din tak yaad rahe |
    | `TELEGRAM_BOT_TOKEN` | ❌ | `123456:AA...` | Telegram notifications + approve buttons |
-   | `TELEGRAM_CHAT_ID` | ❌ | `987654321` | Aapki personal chat ID |
+   | `TELEGRAM_CHAT_ID` | ❌ | `987654321` | Aapki personal chat ID |\n   | `TELEGRAM_ADMIN_USER_IDS` | ❌ | `123456789,987654321` | Optional admin Telegram user IDs; comma-separated |
    | `UPI_ID` | ❌ | `ritesh@okhdfcbank` | Portal par dikhta hai |
    | `UPI_NAME` | ❌ | `Ritesh` | UPI account ka naam |
    | `PRICE_LABEL` | ❌ | `₹299 / saal` | Portal par price text |
