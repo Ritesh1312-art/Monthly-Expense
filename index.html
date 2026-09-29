@@ -11,6 +11,9 @@
 </head>
 <body>
 
+  <div id="bgfx" aria-hidden="true"></div>
+
+  <div id="appShell" class="hidden">
   <header class="topbar">
     <div class="brand">
       <span class="brand-icon">💰</span>
@@ -21,6 +24,11 @@
       <div class="month-label" id="monthLabel"></div>
       <button class="iconbtn" data-action="next-month" title="Agla mahina">▶</button>
     </div>
+    <button class="iconbtn" id="cmdkBtn" data-action="open-cmdk" title="Quick Commands — / dabayein">
+      <span class="cmdk-slash">/</span>
+    </button>
+    <button class="iconbtn theme-toggle" id="themeToggle" data-action="toggle-theme" title="Theme badlein">🌙</button>
+    <button class="profile-pill" id="profilePill" data-action="profile-menu" title="User badlein"></button>
   </header>
 
   <main id="main">
@@ -38,6 +46,17 @@
     <button class="navbtn" data-action="goto-view" data-view="advice"><span class="nav-ico">💡</span><span class="nav-txt">Salah</span></button>
     <button class="navbtn" data-action="goto-view" data-view="settings"><span class="nav-ico">⚙️</span><span class="nav-txt">Settings</span></button>
   </nav>
+  </div>
+
+  <!-- "Kaun use kar raha hai?" — multi-user login gate (jab 2+ profiles ho) -->
+  <div class="modal-overlay auth-overlay hidden" id="authOverlay">
+    <div class="modal auth-modal" id="authModal"></div>
+  </div>
+
+  <!-- Profiles manage (Settings se add/switch/remove user) -->
+  <div class="modal-overlay hidden" id="profileOverlay">
+    <div class="modal" id="profileModal"></div>
+  </div>
 
   <!-- Salary → Planning → Result wizard -->
   <div class="modal-overlay hidden" id="wizardOverlay">
@@ -62,6 +81,18 @@
 
   <!-- License / trial lock (full-screen) -->
   <div class="modal-overlay lock-overlay hidden" id="lockOverlay"></div>
+
+  <!-- ⚡ Slash Command Palette — "/" dabao ya top-right button se kholein -->
+  <div class="modal-overlay cmdk-overlay hidden" id="cmdkOverlay">
+    <div class="modal cmdk-modal" id="cmdkModal">
+      <div class="cmdk-inputwrap">
+        <span class="cmdk-prefix">/</span>
+        <input type="text" id="cmdkInput" class="cmdk-input" placeholder="command likhein... jaise add 500 khana lunch" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cmdk-list" id="cmdkList"></div>
+      <div class="cmdk-foot">↑↓ move · Enter run · Esc close</div>
+    </div>
+  </div>
 
   <div id="toastWrap"></div>
 

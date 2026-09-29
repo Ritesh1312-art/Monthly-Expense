@@ -12,7 +12,9 @@
       bataye is baar kahan paise save ho sakte hain
    ------------------------------------------------------------
    Pure vanilla JS. Data browser ke localStorage mein save hota
-   hai — koi server, koi login, koi tracking nahi.
+   hai — koi server, koi tracking nahi. Optional multi-user
+   profile login hai (jab 2+ log isi device par use karte hain)
+   taaki data aapas mein kabhi merge na ho.
    ============================================================ */
 
 /* ---------------- Safe storage (sandboxed iframes ke liye) ---------------- */
@@ -32,7 +34,308 @@ const store = (() => {
   }
 })();
 
+/* ---------------- Theme (light/dark) — turant apply, login se pehle bhi ---------------- */
+const THEME_KEY = 'pg_theme';
+function applyTheme(t) {
+  try { document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = t === 'dark' ? '☀️' : '🌙';
+}
+function initTheme() {
+  let saved = '';
+  try { saved = store.getItem(THEME_KEY) || ''; } catch (e) {}
+  let theme = saved;
+  if (!theme) {
+    try { theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+    catch (e) { theme = 'light'; }
+  }
+  applyTheme(theme);
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try { store.setItem(THEME_KEY, next); } catch (e) {}
+}
+initTheme();
+
 const STORAGE_KEY = 'paisaguru_v1';
+
+/* ---------------- Safe session storage (per-tab "kaun login hai") ---------------- */
+const sessionStore = (() => {
+  try {
+    const t = '__pg_test__';
+    sessionStorage.setItem(t, t);
+    sessionStorage.removeItem(t);
+    return sessionStorage;
+  } catch (e) {
+    const m = {};
+    return {
+      getItem: k => (k in m ? m[k] : null),
+      setItem: (k, v) => { m[k] = String(v); },
+      removeItem: k => { delete m[k]; }
+    };
+  }
+})();
+
+/* ============================================================
+   USER PROFILES — multiple log ek hi device/browser par
+   ------------------------------------------------------------
+   Solo user ke liye kuch nahi badalta: bina kisi profile ke app
+   pehle jaisi hi chalti hai (data 'paisaguru_v1' mein).
+   Jaise hi koi DOOSRA profile add hota hai ("+ Naya User"), app
+   agli baar khulne par poochhegi "Kaun use kar raha hai?" — taki
+   do logon ka data kabhi aapas mein MERGE na ho. Har profile ka
+   data alag key (paisaguru_v1__<id>) mein save hota hai.
+   ============================================================ */
+const PROFILES_KEY = 'pg_profiles';
+const ACTIVE_SESSION_KEY = 'pg_active_session';
+const PROFILE_ICONS = ['🙂', '😎', '👩', '👨', '🧕', '👦', '👧', '🧑‍💼', '👵', '👴', '🐯', '🦊', '🐱', '🐶', '🦁', '🐼'];
+
+function getProfiles() {
+  try {
+    const raw = store.getItem(PROFILES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+function saveProfiles(list) { store.setItem(PROFILES_KEY, JSON.stringify(list)); }
+
+function simpleHash(str) {
+  let h = 5381;
+  const s = String(str);
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(16);
+}
+function pinHash(pin) { return pin ? simpleHash('pg-pin-' + pin) : ''; }
+
+function createProfile(name, icon, pin) {
+  const profiles = getProfiles();
+  const id = profiles.length === 0 ? 'default' : ('u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+  const profile = { id, name: (name || 'User').trim().slice(0, 24) || 'User', icon: icon || PROFILE_ICONS[profiles.length % PROFILE_ICONS.length], pin: pinHash(pin), createdAt: Date.now() };
+  profiles.push(profile);
+  saveProfiles(profiles);
+  return profile;
+}
+function removeProfile(id) {
+  const profiles = getProfiles().filter(p => p.id !== id);
+  saveProfiles(profiles);
+  store.removeItem(profileStorageKey(id));
+}
+function profileStorageKey(id) { return (!id || id === 'default') ? STORAGE_KEY : STORAGE_KEY + '__' + id; }
+
+let ACTIVE_PROFILE = 'default';
+function currentStorageKey() { return profileStorageKey(ACTIVE_PROFILE); }
+
+function activeSessionProfileId() {
+  const profiles = getProfiles();
+  if (profiles.length < 2) return profiles.length === 1 ? profiles[0].id : 'default';
+  const sid = sessionStore.getItem(ACTIVE_SESSION_KEY);
+  return (sid && profiles.some(p => p.id === sid)) ? sid : null;
+}
+function needsProfileGate() { return getProfiles().length >= 2 && !activeSessionProfileId(); }
+function setActiveSessionProfile(id) { sessionStore.setItem(ACTIVE_SESSION_KEY, id); ACTIVE_PROFILE = id; }
+function currentProfile() {
+  const profiles = getProfiles();
+  return profiles.find(p => p.id === ACTIVE_PROFILE) || { id: 'default', name: (state && state.settings && state.settings.name) || 'Main', icon: '🙂' };
+}
+function logoutProfile() {
+  sessionStore.removeItem(ACTIVE_SESSION_KEY);
+  location.reload();
+}
+
+/* ---------------- Profile UI: pill, gate (login), manage modal ---------------- */
+function renderProfilePill() {
+  const el = document.getElementById('profilePill');
+  if (!el) return;
+  const p = currentProfile();
+  el.innerHTML = `<span class="profile-pill-ico">${esc(p.icon)}</span><span class="profile-pill-name">${esc(p.name || 'Main')}</span>`;
+}
+
+let authView = 'pick'; /* 'pick' | 'pin:<id>' */
+
+function authStepPick() {
+  const profiles = getProfiles();
+  return `
+  <div class="auth-head">
+    <div class="auth-logo">💰</div>
+    <h2>Kaun Use Kar Raha Hai?</h2>
+    <p class="muted">Is device par ${profiles.length} log PaisaGuru use karte hain. Apna profile chunein — taaki kisi ka data kisi se <b>merge na ho</b>.</p>
+  </div>
+  <div class="profile-grid">
+    ${profiles.map(p => `
+      <button class="profile-card" data-action="profile-pick" data-id="${esc(p.id)}">
+        <span class="profile-ico">${esc(p.icon)}</span>
+        <span class="profile-name">${esc(p.name)}</span>
+        ${p.pin ? '<span class="profile-lock">🔒</span>' : ''}
+      </button>`).join('')}
+  </div>
+  <div class="small muted center mt8">🔒 Ye ek device-level profile switch hai (ghar/family ke saath data alag rakhne ke liye) — bank-grade security nahi hai.</div>`;
+}
+function authStepPin(id) {
+  const p = getProfiles().find(x => x.id === id);
+  if (!p) { authView = 'pick'; return authStepPick(); }
+  return `
+  <div class="auth-head">
+    <div class="auth-logo">${esc(p.icon)}</div>
+    <h2>${esc(p.name)}</h2>
+    <p class="muted">Apna PIN daal kar login karein</p>
+  </div>
+  <form id="authPinForm" data-id="${esc(id)}">
+    <div class="field"><input type="password" inputmode="numeric" maxlength="8" id="authPinInput" placeholder="PIN" autofocus></div>
+    <button class="btn primary block" type="submit">🔓 Login</button>
+    <button class="btn ghost sm block mt8" type="button" data-action="profile-back">⬅️ Wapas</button>
+  </form>`;
+}
+function renderAuthOverlay() {
+  const box = document.getElementById('authModal');
+  if (!box) return;
+  box.innerHTML = authView.indexOf('pin:') === 0 ? authStepPin(authView.slice(4)) : authStepPick();
+}
+function showAuthGate() {
+  authView = 'pick';
+  renderAuthOverlay();
+  document.getElementById('authOverlay').classList.remove('hidden');
+}
+function hideAuthGate() { document.getElementById('authOverlay').classList.add('hidden'); }
+
+function pickProfile(id) {
+  const p = getProfiles().find(x => x.id === id);
+  if (!p) return;
+  if (p.pin) { authView = 'pin:' + id; renderAuthOverlay(); return; }
+  completeLogin(id);
+}
+function submitAuthPin(form) {
+  const id = form.getAttribute('data-id');
+  const p = getProfiles().find(x => x.id === id);
+  const val = (document.getElementById('authPinInput').value || '').trim();
+  if (!p || pinHash(val) !== p.pin) { toast('Galat PIN — dobara try karein', 'error'); return; }
+  completeLogin(id);
+}
+function completeLogin(id) {
+  setActiveSessionProfile(id);
+  hideAuthGate();
+  bootApp();
+}
+
+/* ---------------- Profile manage modal (add/switch/remove) — Settings se ---------------- */
+function openProfileModal(html) {
+  document.getElementById('profileModal').innerHTML = html;
+  document.getElementById('profileOverlay').classList.remove('hidden');
+}
+function closeProfileModal() { document.getElementById('profileOverlay').classList.add('hidden'); }
+
+function profileAddFormHtml() {
+  const firstTime = getProfiles().length === 0;
+  return `
+  <div class="wiz-head">
+    <div class="wiz-step">👥 USER</div>
+    <h2>${firstTime ? 'Aapka Naam Kya Hai?' : 'Naya User Add Karein'}</h2>
+    <p class="muted">${firstTime
+      ? 'Ye naam aapki maujooda profile ban jayega — aapka purana data isi ke saath bilkul surakshit rahega.'
+      : 'Family/dost ka naam daalein — unka data <b>bilkul alag</b> rahega, aapse kabhi merge nahi hoga.'}</p>
+  </div>
+  <form id="profileAddForm">
+    <div class="field"><label>Naam</label><input type="text" id="paName" maxlength="24" placeholder="e.g. Ritesh" required autofocus></div>
+    <div class="field">
+      <label>Icon</label>
+      <div class="emoji-row">${PROFILE_ICONS.map((ic, i) => `<label class="emoji-chip"><input type="radio" name="paIcon" value="${ic}" ${i === 0 ? 'checked' : ''}><span>${ic}</span></label>`).join('')}</div>
+    </div>
+    <div class="field"><label>PIN (optional, 4+ digit — kisi aur ko na dikhe isliye)</label><input type="password" id="paPin" inputmode="numeric" maxlength="8" placeholder="Khaali bhi chhod sakte hain"></div>
+    <button class="btn primary block" type="submit">✅ ${firstTime ? 'Shuru Karein' : 'Add Karein'}</button>
+    <button class="btn ghost sm block mt8" type="button" data-action="close-profile">Cancel</button>
+  </form>`;
+}
+function openProfileAdd() { openProfileModal(profileAddFormHtml()); }
+
+function submitProfileAdd(form) {
+  const name = (document.getElementById('paName').value || '').trim();
+  if (!name) { toast('Naam likhein', 'error'); return; }
+  const icon = (form.querySelector('input[name="paIcon"]:checked') || {}).value || '🙂';
+  const pin = (document.getElementById('paPin').value || '').trim();
+  const wasFirst = getProfiles().length === 0;
+  const profile = createProfile(name, icon, pin);
+  closeProfileModal();
+  if (wasFirst) {
+    setActiveSessionProfile(profile.id);
+    toast('Profile ban gayi ✔ Ab aap "' + name + '" ke naam se jaani jaayengi', 'success');
+    renderAll();
+  } else {
+    showConfirm('Naya user "' + name + '" ban gaya! Abhi turant isi par switch karein?', () => {
+      setActiveSessionProfile(profile.id);
+      location.reload();
+    });
+  }
+}
+
+function attemptSwitchProfile(id) {
+  const p = getProfiles().find(x => x.id === id);
+  if (!p) return;
+  if (!p.pin) { doSwitchProfile(id); return; }
+  openProfileModal(`
+  <div class="wiz-head"><h2>${esc(p.icon)} ${esc(p.name)}</h2><p class="muted">PIN daal kar switch karein</p></div>
+  <form id="switchPinForm" data-id="${esc(id)}">
+    <div class="field"><input type="password" inputmode="numeric" maxlength="8" id="switchPinInput" placeholder="PIN" autofocus></div>
+    <button class="btn primary block" type="submit">🔓 Switch Karein</button>
+    <button class="btn ghost sm block mt8" type="button" data-action="close-profile">Cancel</button>
+  </form>`);
+}
+function submitSwitchPin(form) {
+  const id = form.getAttribute('data-id');
+  const p = getProfiles().find(x => x.id === id);
+  const val = (document.getElementById('switchPinInput').value || '').trim();
+  if (!p || pinHash(val) !== p.pin) { toast('Galat PIN', 'error'); return; }
+  doSwitchProfile(id);
+}
+function doSwitchProfile(id) { setActiveSessionProfile(id); closeProfileModal(); location.reload(); }
+
+function confirmRemoveProfile(id) {
+  const p = getProfiles().find(x => x.id === id);
+  if (!p) return;
+  showConfirm('User "' + p.name + '" aur unka SAARA data permanently delete ho jayega. Pakka?', () => {
+    const wasActive = id === ACTIVE_PROFILE;
+    removeProfile(id);
+    toast('User delete ho gaya', 'success');
+    if (wasActive) { sessionStore.removeItem(ACTIVE_SESSION_KEY); location.reload(); }
+    else renderAll();
+  });
+}
+
+function profileQuickSwitchHtml() {
+  const profiles = getProfiles();
+  const others = profiles.filter(p => p.id !== ACTIVE_PROFILE);
+  return `
+  <div class="wiz-head"><h2>👥 Users</h2><p class="muted">Aap abhi <b>${esc(currentProfile().name)}</b> ke roop mein login hain.</p></div>
+  ${others.length ? `<div class="profile-list">${others.map(p => `
+    <button class="profile-row as-btn" data-action="profile-switch" data-id="${esc(p.id)}">
+      <span class="profile-ico">${esc(p.icon)}</span>
+      <div class="profile-row-body"><div class="profile-row-name">${esc(p.name)}</div>${p.pin ? '<div class="small muted">🔒 PIN chahiye</div>' : ''}</div>
+      <span class="small muted">Switch ➜</span>
+    </button>`).join('')}</div>` : '<div class="small muted" style="margin-bottom:10px">Abhi koi aur user nahi hai.</div>'}
+  <button class="btn gold sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button>
+  <button class="btn ghost sm block mt8" data-action="goto-settings-users">⚙️ Sab Users Manage Karein</button>
+  ${profiles.length >= 2 ? '<button class="btn ghost sm block mt8" data-action="profile-logout">🔒 Logout</button>' : ''}`;
+}
+function openProfileQuickSwitch() { openProfileModal(profileQuickSwitchHtml()); }
+
+function usersCardHtml() {
+  const profiles = getProfiles();
+  return `
+  <div class="card">
+    <div class="card-title">👥 Users — Is Device Par</div>
+    ${profiles.length === 0
+      ? `<div class="small muted" style="margin-bottom:10px">Abhi sirf ek hi user hai. Agar family/dost bhi isi device par PaisaGuru use karte hain, unke liye <b>alag profile</b> banayein — taaki kisi ka data merge na ho.</div>`
+      : `<div class="profile-list">${profiles.map(p => `
+        <div class="profile-row ${p.id === ACTIVE_PROFILE ? 'current' : ''}">
+          <span class="profile-ico">${esc(p.icon)}</span>
+          <div class="profile-row-body"><div class="profile-row-name">${esc(p.name)}${p.id === ACTIVE_PROFILE ? ' <span class="chip good">Aap</span>' : ''}</div>${p.pin ? '<div class="small muted">🔒 PIN protected</div>' : ''}</div>
+          ${p.id !== ACTIVE_PROFILE ? `<button class="btn ghost sm" data-action="profile-switch" data-id="${esc(p.id)}">Switch</button>` : ''}
+          ${profiles.length > 1 ? `<button class="delbtn" data-action="profile-remove" data-id="${esc(p.id)}" title="Remove">🗑️</button>` : ''}
+        </div>`).join('')}</div>`}
+    <button class="btn gold sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button>
+    ${profiles.length >= 2 ? '<button class="btn ghost sm block mt8" data-action="profile-logout">🔒 Switch User / Logout</button>' : ''}
+  </div>`;
+}
 
 /* ---------------- Categories ---------------- */
 const CATEGORIES = [
@@ -209,7 +512,7 @@ function defaultState() {
 }
 function loadState() {
   try {
-    const raw = store.getItem(STORAGE_KEY);
+    const raw = store.getItem(currentStorageKey());
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
     const base = defaultState();
@@ -221,11 +524,11 @@ function loadState() {
   } catch (e) { return defaultState(); }
 }
 function saveState() {
-  store.setItem(STORAGE_KEY, JSON.stringify(state));
+  store.setItem(currentStorageKey(), JSON.stringify(state));
   if (typeof queueCloudSync === 'function') queueCloudSync();
 }
 
-let state = loadState();
+let state = null;
 let selectedMonth = monthKey(new Date());
 let currentView = 'home';
 let wiz = null;          // wizard ka temporary state
@@ -672,6 +975,7 @@ function renderAll() {
   const label = document.getElementById('monthLabel');
   label.textContent = monthLabel(selectedMonth) + (hasData ? '  ●' : '');
   label.title = hasData ? 'Is month ka data saved hai' : 'Is month ka data nahi hai';
+  renderProfilePill();
 
   const map = { home: renderHome, expense: renderExpense, report: renderReport, advice: renderAdvice, settings: renderSettings };
   map[currentView]();
@@ -1137,15 +1441,37 @@ function renderReport() {
 /* ============================================================
    SALAH (ADVICE / INVESTMENT) VIEW
    ============================================================ */
+/* ---------------- Verified invest/save links ----------------
+   Ye SEBI-registered platforms / RBI / Govt websites ke DIRECT links hain
+   — click karke seedha wahan jaake invest/save kar sakte hain. App ka
+   inn platforms se koi commission/partnership NAHI hai, sirf education
+   ke liye diye gaye hain. Invest se pehle khud bhi verify kar lein. */
+const INVEST_LINKS = {
+  fd:    { label: 'FD Kholein — Groww', icon: '🏦', url: 'https://groww.in/fixed-deposit', host: 'groww.in' },
+  sip:   { label: 'SIP Shuru Karein — Groww', icon: '📈', url: 'https://groww.in/mutual-funds/start-sip', host: 'groww.in' },
+  mf:    { label: 'Mutual Funds Dekhein — Groww', icon: '💧', url: 'https://groww.in/mutual-funds', host: 'groww.in' },
+  tbill: { label: 'RBI Retail Direct (T-Bill/G-Sec/SGB)', icon: '🏛️', url: 'https://rbiretaildirect.org.in', host: 'rbiretaildirect.org.in' },
+  gold:  { label: 'Gold ETF Dekhein — Groww', icon: '🥇', url: 'https://groww.in/etfs', host: 'groww.in' },
+  ppf:   { label: 'PPF — India Post (Official)', icon: '🏤', url: 'https://app.indiapost.gov.in/enterpriseportal/financial-featuredservices/saving', host: 'indiapost.gov.in' },
+  tax:   { label: 'Income Tax e-Filing (Official)', icon: '🧾', url: 'https://www.incometax.gov.in/iec/foportal/', host: 'incometax.gov.in' },
+};
+function invLinksHtml(keys, size) {
+  const list = (keys || []).map(k => INVEST_LINKS[k]).filter(Boolean);
+  if (!list.length) return '';
+  return `<div class="invest-links">${list.map(l =>
+    `<a class="invest-link${size ? ' ' + size : ''}" href="${l.url}" target="_blank" rel="noopener noreferrer">${l.icon} ${esc(l.label)} ↗</a>`
+  ).join('')}</div>`;
+}
+
 /* Quick options — runtime par FIN (live/bundled rates) se banti hain */
 function quickOptions() {
   const tb = tbillLine();
   return [
-    { icon: '🏦', name: 'Fixed Deposit (FD)', time: '7 din – 10 saal', ret: FIN.fd.bigBanks + ' /saal', risk: 'Bahut kam', note: 'SBI ~6.3–6.45%, HDFC/ICICI ~7.1%, small finance banks 8%+. DICGC insurance ₹5L/bank' },
-    { icon: '💧', name: 'Liquid Mutual Fund', time: '1 – 3 din mein nikaal sakte hain', ret: '≈ 6.5% /saal (abhi)', risk: 'Bahut kam (market-linked)', note: 'Savings account se better, almost turant access — par return fixed nahi' },
-    { icon: '📜', name: 'Treasury Bill (T-Bill)', time: '91 / 182 / 364 din', ret: '≈ ' + tb.d91 + ' – ' + tb.d364 + '% /saal', risk: 'Bahut kam', note: '91D ≈' + tb.d91 + '% · 182D ≈' + tb.d182 + '% · 364D ≈' + tb.d364 + '% — RBI Retail Direct app se, Govt of India ka paper' },
-    { icon: '🔁', name: 'Recurring Deposit (RD)', time: '6 mahine – 10 saal', ret: FIN.rd + ' /saal', risk: 'Bahut kam', note: 'Har mahine fixed amount auto-debit — paisa bachta hi jayega' },
-    { icon: '⚖️', name: 'Arbitrage Fund', time: '3+ mahine', ret: FIN.arbitrage + ' /saal', risk: 'Kam', note: 'Return FD jaisa, par equity tax (LTCG 12.5%) — high slab walo ko fayda' },
+    { icon: '🏦', name: 'Fixed Deposit (FD)', time: '7 din – 10 saal', ret: FIN.fd.bigBanks + ' /saal', risk: 'Bahut kam', note: 'SBI ~6.3–6.45%, HDFC/ICICI ~7.1%, small finance banks 8%+. DICGC insurance ₹5L/bank', links: ['fd'] },
+    { icon: '💧', name: 'Liquid Mutual Fund', time: '1 – 3 din mein nikaal sakte hain', ret: '≈ 6.5% /saal (abhi)', risk: 'Bahut kam (market-linked)', note: 'Savings account se better, almost turant access — par return fixed nahi', links: ['mf'] },
+    { icon: '📜', name: 'Treasury Bill (T-Bill)', time: '91 / 182 / 364 din', ret: '≈ ' + tb.d91 + ' – ' + tb.d364 + '% /saal', risk: 'Bahut kam', note: '91D ≈' + tb.d91 + '% · 182D ≈' + tb.d182 + '% · 364D ≈' + tb.d364 + '% — RBI Retail Direct app se, Govt of India ka paper', links: ['tbill'] },
+    { icon: '🔁', name: 'Recurring Deposit (RD)', time: '6 mahine – 10 saal', ret: FIN.rd + ' /saal', risk: 'Bahut kam', note: 'Har mahine fixed amount auto-debit — apne bank ki app/net-banking se turant khul jati hai', links: ['fd'] },
+    { icon: '⚖️', name: 'Arbitrage Fund', time: '3+ mahine', ret: FIN.arbitrage + ' /saal', risk: 'Kam', note: 'Return FD jaisa, par equity tax (LTCG 12.5%) — high slab walo ko fayda', links: ['mf'] },
   ];
 }
 
@@ -1153,15 +1479,15 @@ function buildAllocation(leftover) {
   if (leftover <= 0) return [];
   const efDone = !!state.settings.emergencyDone;
   const base = efDone ? [
-    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 50, tag: 'Long Term', why: 'Nifty 50 TRI ka 20-saal average ≈12.4% — ye ASSUMPTION hai, guarantee nahi. Har mahine automatic invest, compounding ka asli jaadu.' },
-    { icon: '🏦', name: 'FD / T-Bill / Debt Fund', pct: 25, tag: 'Short Term', why: 'Safe ' + tbillLine().d91 + '–7.5% (verified ' + FIN.manualVerifiedOn + '). 1-3 saal ke goals (phone, vacation) ke liye.' },
-    { icon: '🥇', name: 'Gold (Gold ETF / Gold Fund)', pct: 15, tag: 'Hedge', why: 'Inflation se ladne wala asset. (SGB naye investors ke liye band hai — Feb 2024 se koi naya tranche nahi.)' },
-    { icon: '🧾', name: 'ELSS / PPF (Tax Saving)', pct: 10, tag: 'Tax Bachat', why: 'Section 80C mein ₹1.5L tak — SIRF old regime mein (new regime default hai, ₹12L tak tax zero ho sakta hai).' },
+    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 50, tag: 'Long Term', why: 'Nifty 50 TRI ka 20-saal average ≈12.4% — ye ASSUMPTION hai, guarantee nahi. Har mahine automatic invest, compounding ka asli jaadu.', links: ['sip'] },
+    { icon: '🏦', name: 'FD / T-Bill / Debt Fund', pct: 25, tag: 'Short Term', why: 'Safe ' + tbillLine().d91 + '–7.5% (verified ' + FIN.manualVerifiedOn + '). 1-3 saal ke goals (phone, vacation) ke liye.', links: ['fd', 'tbill'] },
+    { icon: '🥇', name: 'Gold (Gold ETF / Gold Fund)', pct: 15, tag: 'Hedge', why: 'Inflation se ladne wala asset. (SGB naye investors ke liye band hai — Feb 2024 se koi naya tranche nahi.)', links: ['gold'] },
+    { icon: '🧾', name: 'ELSS / PPF (Tax Saving)', pct: 10, tag: 'Tax Bachat', why: 'Section 80C mein ₹1.5L tak — SIRF old regime mein (new regime default hai, ₹12L tak tax zero ho sakta hai).', links: ['mf', 'ppf'] },
   ] : [
-    { icon: '🛡️', name: 'Emergency Fund (Liquid Fund/Savings)', pct: 40, tag: 'Sabse Pehle', why: '3-6 mahine ka kharcha pehle jama karein. Bimari, job jaana, koi bhi emergency — yahi aapko bachayega.' },
-    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 35, tag: 'Long Term', why: 'Bacha hua paisa har mahine automatic invest — 20-saal average ≈12.4% (TRI), par ye assumption hai, guarantee nahi.' },
-    { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: 'Safe ' + tbillLine().d91 + '–7.5% return (verified ' + FIN.manualVerifiedOn + '), zarurat pade to turant nikaal sakte hain.' },
-    { icon: '🥇', name: 'Gold (Gold ETF / Fund)', pct: 10, tag: 'Hedge', why: 'Thoda gold har portfolio mein hona hi chahiye — SGB ab naye liye band hai.' },
+    { icon: '🛡️', name: 'Emergency Fund (Liquid Fund/Savings)', pct: 40, tag: 'Sabse Pehle', why: '3-6 mahine ka kharcha pehle jama karein. Bimari, job jaana, koi bhi emergency — yahi aapko bachayega.', links: ['mf'] },
+    { icon: '📈', name: 'Index Fund SIP (Nifty 50)', pct: 35, tag: 'Long Term', why: 'Bacha hua paisa har mahine automatic invest — 20-saal average ≈12.4% (TRI), par ye assumption hai, guarantee nahi.', links: ['sip'] },
+    { icon: '🏦', name: 'FD / T-Bill (Short Term)', pct: 15, tag: 'Short Term', why: 'Safe ' + tbillLine().d91 + '–7.5% return (verified ' + FIN.manualVerifiedOn + '), zarurat pade to turant nikaal sakte hain.', links: ['fd', 'tbill'] },
+    { icon: '🥇', name: 'Gold (Gold ETF / Fund)', pct: 10, tag: 'Hedge', why: 'Thoda gold har portfolio mein hona hi chahiye — SGB ab naye liye band hai.', links: ['gold'] },
   ];
   const cards = base.map(a => Object.assign({}, a, { amount: Math.floor(leftover * a.pct / 100) }));
   /* Rounding ka bacha hua paisa pehli (sabse badi) card ko — total EXACT leftover */
@@ -1198,6 +1524,7 @@ function renderAdvice() {
     <div class="muted small" style="margin-bottom:6px">Target: aapke 3 mahine ke zaroori kharche = <b>${fmt(target)}</b> (liquid fund ya savings account mein)</div>
     <div class="progress"><div class="progress-fill ${efPct >= 100 ? '' : 'warn'}" style="width:${efPct}%"></div></div>
     <div class="small muted mt8">Ab tak jama: <b>${fmt(saved)}</b> ${target > saved ? '· aur ' + fmt(target - saved) + ' chahiye' : '· 🎉 poora hai!'}</div>
+    ${invLinksHtml(['mf'], 'sm')}
     <button class="btn ghost sm block mt8" data-action="goto-view" data-view="settings">${state.settings.emergencyDone ? '↩️ Status badalna hai? Settings kholen' : '✅ Agar poora ho gaya hai to yahan se batayein'}</button>
   </div>`;
 
@@ -1276,9 +1603,11 @@ function renderAdvice() {
         </div>
         <div class="alloc-amt">${fmt(a.amount)} <span class="small muted" style="font-weight:600">(${a.pct}%)</span></div>
         <div class="alloc-why">${a.why}</div>
+        ${invLinksHtml(a.links, 'sm')}
       </div>`).join('')}
     </div>
     <div class="small muted mt8">💡 Har mahine yahi routine: salary aaye → bacha hua auto-transfer invest ho jaye. "Pehle invest, phir kharch" — ulti aadat hi garibi ki jad hai!</div>
+    <div class="small muted mt8">🔗 Links SEBI-registered platforms / RBI / Govt ki official sites ke hain — click karke seedha wahan invest/save kar sakte hain. App ka inse koi commission ya partnership nahi hai; invest se pehle khud bhi verify kar lein.</div>
   </div>
 
   ${goalsPlanCardHtml(leftover)}
@@ -1287,13 +1616,14 @@ function renderAdvice() {
     <div class="card-title">⚡ Kam Waqt Mein Profit — Sahi Options</div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Option</th><th>Time</th><th>Return</th><th>Risk</th></tr></thead>
+        <thead><tr><th>Option</th><th>Time</th><th>Return</th><th>Risk</th><th>Invest</th></tr></thead>
         <tbody>
           ${quickOptions().map(o => `<tr>
             <td><b>${o.icon} ${o.name}</b><br><span class="small muted">${o.note}</span></td>
             <td>${o.time}</td>
             <td><b>${o.ret}</b></td>
             <td class="small">${o.risk}</td>
+            <td>${invLinksHtml(o.links, 'sm')}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -1332,6 +1662,7 @@ function renderAdvice() {
       <div class="tip tip-info"><span class="tip-ico">👴</span><div><div class="tip-title">NPS — ₹50,000 extra (sirf OLD regime)</div><div class="tip-text">80CCD(1B). Bonus: employer NPS contribution 14% tak (80CCD(2)) DONO regime mein milta hai.</div></div></div>
       <div class="tip tip-info"><span class="tip-ico">⚖️</span><div><div class="tip-title">Capital Gains Tax (equity/mutual fund)</div><div class="tip-text">12 mahine se kam hold = STCG 20%. Zyada hold = LTCG 12.5% (₹1.25L/year tak gains free). Apr 2023 ke baad ke debt funds = slab rate.</div></div></div>
     </div>
+    ${invLinksHtml(['tax'], 'sm')}
   </div>
 
   ${sourcesCardHtml()}
@@ -1344,9 +1675,9 @@ function educationCards() {
     <div class="card-title">⚡ Kam Waqt Mein Profit — Sahi Options</div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Option</th><th>Time</th><th>Return</th><th>Risk</th></tr></thead>
+        <thead><tr><th>Option</th><th>Time</th><th>Return</th><th>Risk</th><th>Invest</th></tr></thead>
         <tbody>
-          ${quickOptions().map(o => `<tr><td><b>${o.icon} ${o.name}</b><br><span class="small muted">${o.note}</span></td><td>${o.time}</td><td><b>${o.ret}</b></td><td class="small">${o.risk}</td></tr>`).join('')}
+          ${quickOptions().map(o => `<tr><td><b>${o.icon} ${o.name}</b><br><span class="small muted">${o.note}</span></td><td>${o.time}</td><td><b>${o.ret}</b></td><td class="small">${o.risk}</td><td>${invLinksHtml(o.links, 'sm')}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>
@@ -1720,6 +2051,8 @@ function renderSettings() {
   const monthCount = Object.keys(state.months).length;
 
   el.innerHTML = `
+  ${usersCardHtml()}
+
   <div class="card">
     <div class="card-title">👤 Aapki Jankari</div>
     <form id="settingsForm">
@@ -1741,6 +2074,12 @@ function renderSettings() {
   </div>
 
   <div class="card">
+    <div class="card-title">🎨 Look &amp; Feel</div>
+    <div class="small muted" style="margin-bottom:10px">App ka theme apni pasand se badlein.</div>
+    <button class="btn ghost block" data-action="toggle-theme">${document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️ Light Mode Karein' : '🌙 Dark Mode Karein'}</button>
+  </div>
+
+  <div class="card">
     <div class="card-title">💾 Data — ${monthCount} mahine · ${(state.goals || []).length} goals</div>
     <div class="stack">
       <div class="small muted">Sab data sirf aapke browser (localStorage) mein hai — koi server nahi, koi tracking nahi. Backup ke liye export kar lein.</div>
@@ -1757,13 +2096,25 @@ function renderSettings() {
   ${licenseCardHtml()}
 
   <div class="card">
+    <div class="card-title">⚡ Quick Commands</div>
+    <div class="small muted">Kahin bhi <b>"/"</b> dabayein (ya <b>Ctrl+K</b>) — ek chhota command box khulega jisme type karke turant kaam ho sakta hai: <b>/add 500 khana</b>, <b>/report</b>, <b>/goal</b>, <b>/dark</b>, <b>/privacy</b> waghera.</div>
+    <button class="btn ghost sm mt8" data-action="open-cmdk">⚡ Command Box Kholein</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔒 Privacy</div>
+    <div class="small muted">Aapka data sirf isi device par rehta hai. Poori jaankari privacy policy mein padhein.</div>
+    <a class="btn ghost sm mt8" href="privacy.html" target="_blank" rel="noopener">📜 Privacy Policy Padhein</a>
+  </div>
+
+  <div class="card">
     <div class="card-title">ℹ️ PaisaGuru Ke Baare Mein</div>
     <div class="small muted stack">
       <div>💰 <b>PaisaGuru</b> — Monthly Expense Tracker & Smart Saving Advisor</div>
       <div>Salary aaye → plan banaye → jo bache use invest kare → har mahine analysis se better kare. Ye poori app offline chalti hai, data aapke paas rehta hai.</div>
       <div>🎤 Voice input (Chrome/Edge) · 🎯 Savings Goals · 📊 Monthly analysis · 💡 Investment salah</div>
       <div>📚 Investment ke saare numbers web se verified hain — <b>app khud internet se rates update karti rehti hai</b> (GitHub se live fetch + weekly auto-bot). Sources ki poori table Salah tab mein hai.</div>
-      <div>Version 1.3 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
+      <div>Version 1.4 · Banaya gaya ❤️ se — aam logon ke liye, jo salary aate hi paisa kharch kar dete hain.</div>
     </div>
   </div>
   ${disclaimerHtml()}`;
@@ -2356,7 +2707,7 @@ async function restoreFromCloud(silent) {
       goals: Array.isArray(data.goals) ? data.goals : [],
       settings: Object.assign(defaultState().settings, data.settings || {})
     };
-    store.setItem(STORAGE_KEY, JSON.stringify(state));
+    store.setItem(currentStorageKey(), JSON.stringify(state));
     renderAll();
     if (!silent) toast('Cloud se data wapas aa gaya ✔', 'success');
     return true;
@@ -2364,6 +2715,178 @@ async function restoreFromCloud(silent) {
     if (!silent) toast('Restore fail — internet check karein', 'error');
     return false;
   }
+}
+
+/* ============================================================
+   ⚡ SLASH COMMAND PALETTE — "/" ya Ctrl+K dabao, ya top-right button
+   ============================================================ */
+const CATEGORY_ALIASES = {
+  rent: ['rent', 'kiraya', 'ghar'],
+  grocery: ['grocery', 'ration', 'sabzi', 'sabji'],
+  bills: ['bill', 'bijli', 'pani', 'paani', 'electricity', 'light'],
+  medical: ['medical', 'dawai', 'doctor', 'hospital', 'sehat'],
+  transport: ['transport', 'petrol', 'diesel', 'auto', 'cab', 'bus', 'train'],
+  recharge: ['recharge', 'internet', 'mobile', 'data', 'wifi'],
+  education: ['education', 'fees', 'fee', 'school', 'college', 'padhai', 'tuition'],
+  emi: ['emi', 'loan', 'installment', 'karza'],
+  shopping: ['shopping', 'clothes', 'kapde', 'amazon', 'flipkart'],
+  eatingout: ['khana', 'khaana', 'food', 'zomato', 'swiggy', 'restaurant', 'cafe', 'eatingout'],
+  entertainment: ['entertainment', 'movie', 'ghumna', 'netflix', 'game'],
+  others: ['others', 'other', 'misc'],
+};
+
+function matchCategoryFromText(text) {
+  const t = (text || '').toLowerCase().trim();
+  if (!t) return null;
+  const byId = CATEGORIES.find(c => c.id === t);
+  if (byId) return byId.id;
+  const byName = CATEGORIES.find(c => c.name.toLowerCase().includes(t));
+  if (byName) return byName.id;
+  for (const [id, aliases] of Object.entries(CATEGORY_ALIASES)) {
+    if (aliases.some(a => a === t || t.includes(a))) return id;
+  }
+  return null;
+}
+
+function parseAddCommandArgs(argsStr) {
+  const m = (argsStr || '').trim().match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+  if (!m) return null;
+  const amount = Number(m[1]);
+  const rest = m[2].trim();
+  const tokens = rest.length ? rest.split(/\s+/) : [];
+  let category = 'others';
+  let noteTokens = tokens;
+  if (tokens.length) {
+    const guess = matchCategoryFromText(tokens[0]);
+    if (guess) { category = guess; noteTokens = tokens.slice(1); }
+  }
+  return { amount, category, note: noteTokens.join(' ') };
+}
+
+function runAddExpenseCommand(argsStr) {
+  if (!assertUnlocked()) return;
+  const parsed = parseAddCommandArgs(argsStr);
+  if (!parsed || !parsed.amount || parsed.amount <= 0) {
+    toast('Format: /add <amount> <category> [note] — jaise /add 500 khana lunch', 'error');
+    return;
+  }
+  const md = monthData(selectedMonth);
+  if (!md) { toast('Pehle salary plan karein (Home se wizard kholein)', 'error'); closeCmdk(); return; }
+  md.expenses = md.expenses || [];
+  const date = selectedMonth === monthKey(new Date()) ? todayISO() : selectedMonth + '-01';
+  md.expenses.push({ id: 'e' + Date.now() + Math.floor(Math.random() * 999), date, category: parsed.category, amount: parsed.amount, note: parsed.note });
+  saveState();
+  const c = catById(parsed.category);
+  closeCmdk();
+  toast(`✔ ${c.name}: ${fmt(parsed.amount)} add ho gaya (/add)`, 'success');
+  renderAll();
+}
+
+const CMDK_COMMANDS = [
+  { id: 'home', label: '🏠 /home', hint: 'Home screen par jaayein', keywords: ['home', 'ghar'], run: () => { switchView('home'); closeCmdk(); } },
+  { id: 'expense', label: '🧾 /expense', hint: 'Kharcha add/dekhne wala view kholein', keywords: ['expense', 'kharcha'], run: () => { switchView('expense'); closeCmdk(); } },
+  { id: 'report', label: '📊 /report', hint: 'Is mahine ki report dekhein', keywords: ['report'], run: () => { switchView('report'); closeCmdk(); } },
+  { id: 'advice', label: '💡 /advice', hint: 'Invest/saving salah dekhein', keywords: ['advice', 'salah', 'invest'], run: () => { switchView('advice'); closeCmdk(); } },
+  { id: 'settings', label: '⚙️ /settings', hint: 'App settings kholein', keywords: ['settings'], run: () => { switchView('settings'); closeCmdk(); } },
+  { id: 'add', label: '➕ /add <amount> <category> [note]', hint: 'Turant kharcha add karein — jaise /add 500 khana lunch', keywords: ['add', 'kharcha'], needsArgs: true, run: (args) => runAddExpenseCommand(args) },
+  { id: 'goal', label: '🎯 /goal', hint: 'Naya saving goal add karein', keywords: ['goal'], run: () => { closeCmdk(); openGoalModal(); } },
+  { id: 'wizard', label: '🧮 /wizard', hint: 'Salary → planning wizard kholein', keywords: ['wizard', 'salary', 'plan'], run: () => { closeCmdk(); openWizard(); } },
+  { id: 'theme', label: '🎨 /theme', hint: 'Dark/Light mode switch karein', keywords: ['theme', 'dark', 'light'], run: () => { toggleTheme(); if (state) renderAll(); closeCmdk(); } },
+  { id: 'export', label: '⬇️ /export', hint: 'Data JSON file mein backup export karein', keywords: ['export', 'backup'], run: () => { closeCmdk(); exportData(); } },
+  { id: 'import', label: '⬆️ /import', hint: 'JSON file se data restore karein', keywords: ['import', 'restore'], run: () => { closeCmdk(); const f = document.getElementById('importFile'); if (f) f.click(); } },
+  { id: 'user', label: '👥 /user', hint: 'Doosre profile par switch karein', keywords: ['user', 'switch', 'profile'], run: () => { closeCmdk(); openProfileQuickSwitch(); } },
+  { id: 'logout', label: '🔒 /logout', hint: 'Is profile se logout karein', keywords: ['logout'], run: () => { closeCmdk(); logoutProfile(); } },
+  { id: 'privacy', label: '📜 /privacy', hint: 'Privacy policy naye tab mein kholein', keywords: ['privacy', 'policy'], run: () => { closeCmdk(); window.open('privacy.html', '_blank'); } },
+  { id: 'help', label: '❓ /help', hint: 'Saare commands ki list dekhein', keywords: ['help'], run: () => { const inp = document.getElementById('cmdkInput'); if (inp) { inp.value = ''; renderCmdkList(''); inp.focus(); } } },
+];
+
+let cmdkFiltered = [];
+let cmdkActiveIdx = 0;
+
+function cmdkIsAvailable() {
+  const shell = document.getElementById('appShell');
+  const auth = document.getElementById('authOverlay');
+  const lock = document.getElementById('lockOverlay');
+  if (!shell || shell.classList.contains('hidden')) return false;
+  if (auth && !auth.classList.contains('hidden')) return false;
+  if (lock && !lock.classList.contains('hidden')) return false;
+  return true;
+}
+
+function openCmdk() {
+  if (!cmdkIsAvailable()) return;
+  const overlay = document.getElementById('cmdkOverlay');
+  const input = document.getElementById('cmdkInput');
+  if (!overlay || !input) return;
+  overlay.classList.remove('hidden');
+  input.value = '';
+  renderCmdkList('');
+  setTimeout(() => input.focus(), 30);
+}
+
+function closeCmdk() {
+  const overlay = document.getElementById('cmdkOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+function cmdkQueryParts(raw) {
+  let q = (raw || '').trim();
+  if (q.startsWith('/')) q = q.slice(1);
+  const sp = q.indexOf(' ');
+  if (sp === -1) return { cmd: q.toLowerCase(), args: '' };
+  return { cmd: q.slice(0, sp).toLowerCase(), args: q.slice(sp + 1) };
+}
+
+function renderCmdkList(raw) {
+  const list = document.getElementById('cmdkList');
+  if (!list) return;
+  const { cmd, args } = cmdkQueryParts(raw);
+
+  if (!cmd) {
+    cmdkFiltered = CMDK_COMMANDS.slice();
+  } else {
+    const exact = CMDK_COMMANDS.find(c => c.id === cmd);
+    if (exact && exact.id === 'add' && args) {
+      const parsed = parseAddCommandArgs(args);
+      if (parsed && parsed.amount > 0) {
+        const c = catById(parsed.category);
+        list.innerHTML = `<div class="cmdk-item active" data-idx="0">
+          <div class="cmdk-item-label">➕ ${fmt(parsed.amount)} — ${esc(c.name)}${parsed.note ? ' · ' + esc(parsed.note) : ''}</div>
+          <div class="cmdk-item-hint">Enter dabayein add karne ke liye</div>
+        </div>`;
+        cmdkFiltered = [{ id: 'add', run: () => runAddExpenseCommand(args) }];
+        cmdkActiveIdx = 0;
+        return;
+      }
+    }
+    cmdkFiltered = CMDK_COMMANDS.filter(c =>
+      c.id.startsWith(cmd) || c.keywords.some(k => k.startsWith(cmd) || k.includes(cmd)));
+  }
+
+  if (!cmdkFiltered.length) {
+    list.innerHTML = `<div class="cmdk-empty">Koi command nahi mila. <b>/help</b> try karein.</div>`;
+    return;
+  }
+  cmdkActiveIdx = 0;
+  list.innerHTML = cmdkFiltered.map((c, i) => `
+    <div class="cmdk-item${i === 0 ? ' active' : ''}" data-idx="${i}">
+      <div class="cmdk-item-label">${c.label}</div>
+      <div class="cmdk-item-hint">${esc(c.hint)}</div>
+    </div>`).join('');
+}
+
+function cmdkMoveActive(delta) {
+  const items = document.querySelectorAll('#cmdkList .cmdk-item');
+  if (!items.length) return;
+  cmdkActiveIdx = (cmdkActiveIdx + delta + items.length) % items.length;
+  items.forEach((el, i) => el.classList.toggle('active', i === cmdkActiveIdx));
+  items[cmdkActiveIdx].scrollIntoView({ block: 'nearest' });
+}
+
+function cmdkRunActive() {
+  const input = document.getElementById('cmdkInput');
+  const { args } = cmdkQueryParts(input ? input.value : '');
+  if (cmdkFiltered[cmdkActiveIdx]) cmdkFiltered[cmdkActiveIdx].run(args);
 }
 
 /* ============================================================
@@ -2424,7 +2947,26 @@ document.addEventListener('click', e => {
     case 'lic-logout': licLogout(); break;
     case 'cloud-backup': backupToCloud(false); break;
     case 'cloud-restore': restoreFromCloud(false); break;
+    /* ---- Profiles / multi-user login ---- */
+    case 'profile-pick': pickProfile(t.dataset.id); break;
+    case 'profile-back': authView = 'pick'; renderAuthOverlay(); break;
+    case 'profile-menu': openProfileQuickSwitch(); break;
+    case 'profile-add-open': openProfileAdd(); break;
+    case 'profile-switch': attemptSwitchProfile(t.dataset.id); break;
+    case 'profile-remove': confirmRemoveProfile(t.dataset.id); break;
+    case 'profile-logout': logoutProfile(); break;
+    case 'close-profile': closeProfileModal(); break;
+    case 'goto-settings-users': closeProfileModal(); switchView('settings'); break;
+    case 'toggle-theme': toggleTheme(); if (typeof renderAll === 'function' && state) renderAll(); break;
+    case 'open-cmdk': openCmdk(); break;
   }
+});
+
+document.addEventListener('click', e => {
+  const item = e.target.closest('#cmdkList .cmdk-item');
+  if (!item) return;
+  cmdkActiveIdx = Number(item.dataset.idx) || 0;
+  cmdkRunActive();
 });
 
 document.addEventListener('submit', e => {
@@ -2436,6 +2978,9 @@ document.addEventListener('submit', e => {
   else if (e.target.id === 'contribForm') addContribution(e.target);
   else if (e.target.id === 'licLoginForm') submitAccountLogin(e.target);
   else if (e.target.id === 'licKeyForm') submitDirectKey(e.target);
+  else if (e.target.id === 'authPinForm') submitAuthPin(e.target);
+  else if (e.target.id === 'profileAddForm') submitProfileAdd(e.target);
+  else if (e.target.id === 'switchPinForm') submitSwitchPin(e.target);
 });
 
 document.addEventListener('input', e => {
@@ -2456,7 +3001,33 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeWizard(); hideConfirm(); closeGoalModal(); hideLockOverlay(); }
+  const cmdkOverlay = document.getElementById('cmdkOverlay');
+  const cmdkOpen = cmdkOverlay && !cmdkOverlay.classList.contains('hidden');
+
+  if (cmdkOpen) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); cmdkMoveActive(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); cmdkMoveActive(-1); return; }
+    if (e.key === 'Enter') { e.preventDefault(); cmdkRunActive(); return; }
+  }
+
+  if (e.key === 'Escape') { closeWizard(); hideConfirm(); closeGoalModal(); hideLockOverlay(); closeProfileModal(); closeCmdk(); return; }
+
+  if (!cmdkOpen) {
+    const tag = (e.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+    if (!typing && (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'))) {
+      e.preventDefault();
+      openCmdk();
+    }
+  }
+});
+
+const cmdkInputEl = document.getElementById('cmdkInput');
+if (cmdkInputEl) cmdkInputEl.addEventListener('input', e => renderCmdkList(e.target.value));
+
+const cmdkOverlayEl = document.getElementById('cmdkOverlay');
+if (cmdkOverlayEl) cmdkOverlayEl.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCmdk();
 });
 
 document.getElementById('wizardOverlay').addEventListener('click', e => {
@@ -2468,8 +3039,26 @@ document.getElementById('confirmOverlay').addEventListener('click', e => {
 document.getElementById('goalOverlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeGoalModal();
 });
+document.getElementById('profileOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeProfileModal();
+});
+/* authOverlay ko jaan-bujh kar backdrop-click se close NAHI kiya — login mandatory hai jab 2+ users ho */
 
 /* ---------------- Init ---------------- */
-renderAll();
-maybeInitLicense(); /* 🔐 licensing sirf tab jab FIN.apiBase set ho */
-refreshRates(); /* 📡 internet se latest rates (fail par bundled/cached — app kabhi nahi rukti) */
+function bootApp() {
+  state = loadState();
+  selectedMonth = monthKey(new Date());
+  const shell = document.getElementById('appShell');
+  if (shell) shell.classList.remove('hidden');
+  renderAll();
+  maybeInitLicense(); /* 🔐 licensing sirf tab jab FIN.apiBase set ho */
+  refreshRates(); /* 📡 internet se latest rates (fail par bundled/cached — app kabhi nahi rukti) */
+}
+
+if (needsProfileGate()) {
+  showAuthGate();
+} else {
+  ACTIVE_PROFILE = activeSessionProfileId() || 'default';
+  setActiveSessionProfile(ACTIVE_PROFILE);
+  bootApp();
+}
