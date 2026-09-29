@@ -13,8 +13,8 @@
    ------------------------------------------------------------
    Pure vanilla JS. Data browser ke localStorage mein save hota
    hai — koi server, koi tracking nahi. Optional multi-user
-   profile login hai (jab 2+ log isi device par use karte hain)
-   taaki data aapas mein kabhi merge na ho.
+   hamesha-on profile/Admin login gate hai, taaki har workspace ka
+   data alag rahe aur kabhi aapas mein merge na ho.
    ============================================================ */
 
 /* ---------------- Safe storage (sandboxed iframes ke liye) ---------------- */
@@ -79,24 +79,24 @@ const sessionStore = (() => {
 })();
 
 /* ============================================================
-   USER PROFILES — multiple log ek hi device/browser par
+   ALWAYS-ON LOGIN + USER PROFILES + ADMIN SUPERUSER
    ------------------------------------------------------------
-   Solo user ke liye kuch nahi badalta: bina kisi profile ke app
-   pehle jaisi hi chalti hai (data 'paisaguru_v1' mein).
-   Jaise hi koi DOOSRA profile add hota hai ("+ Naya User"), app
-   agli baar khulne par poochhegi "Kaun use kar raha hai?" — taki
-   do logon ka data kabhi aapas mein MERGE na ho. Har profile ka
-   data alag key (paisaguru_v1__<id>) mein save hota hai.
+   Har app start par gate dikhai deta hai. User profiles ka data
+   alag localStorage keys mein rehta hai. Admin ka apna workspace
+   hai aur woh kisi bhi local user ka data dekh/manage kar sakta hai.
    ============================================================ */
 const PROFILES_KEY = 'pg_profiles';
 const ACTIVE_SESSION_KEY = 'pg_active_session';
+const SESSION_ROLE_KEY = 'pg_session_role';
+const LOCAL_ADMIN_PASS_KEY = 'pg_local_admin_password';
+const ADMIN_PROFILE_ID = '__admin__';
 const PROFILE_ICONS = ['🙂', '😎', '👩', '👨', '🧕', '👦', '👧', '🧑‍💼', '👵', '👴', '🐯', '🦊', '🐱', '🐶', '🦁', '🐼'];
 
 function getProfiles() {
   try {
     const raw = store.getItem(PROFILES_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    return Array.isArray(arr) ? arr.filter(p => p && p.id !== ADMIN_PROFILE_ID) : [];
   } catch (e) { return []; }
 }
 function saveProfiles(list) { store.setItem(PROFILES_KEY, JSON.stringify(list)); }
@@ -108,6 +108,16 @@ function simpleHash(str) {
   return h.toString(16);
 }
 function pinHash(pin) { return pin ? simpleHash('pg-pin-' + pin) : ''; }
+function localAdminPasswordHash(password) { return simpleHash('pg-local-admin-' + String(password)); }
+function savedAdminPasswordHash() {
+  return store.getItem(LOCAL_ADMIN_PASS_KEY) || localAdminPasswordHash('admin123');
+}
+function verifyLocalAdminPassword(password) {
+  return localAdminPasswordHash(password) === savedAdminPasswordHash();
+}
+function saveLocalAdminPassword(password) {
+  store.setItem(LOCAL_ADMIN_PASS_KEY, localAdminPasswordHash(password));
+}
 
 function createProfile(name, icon, pin) {
   const profiles = getProfiles();
@@ -118,59 +128,81 @@ function createProfile(name, icon, pin) {
   return profile;
 }
 function removeProfile(id) {
+  if (!id || id === ADMIN_PROFILE_ID) return;
   const profiles = getProfiles().filter(p => p.id !== id);
   saveProfiles(profiles);
   store.removeItem(profileStorageKey(id));
 }
-function profileStorageKey(id) { return (!id || id === 'default') ? STORAGE_KEY : STORAGE_KEY + '__' + id; }
+function profileStorageKey(id) {
+  if (id === ADMIN_PROFILE_ID) return STORAGE_KEY + '__admin';
+  return (!id || id === 'default') ? STORAGE_KEY : STORAGE_KEY + '__' + id;
+}
 
 let ACTIVE_PROFILE = 'default';
+let LOGIN_COMPLETE = false;
 function currentStorageKey() { return profileStorageKey(ACTIVE_PROFILE); }
 
 function activeSessionProfileId() {
-  const profiles = getProfiles();
-  if (profiles.length < 2) return profiles.length === 1 ? profiles[0].id : 'default';
   const sid = sessionStore.getItem(ACTIVE_SESSION_KEY);
-  return (sid && profiles.some(p => p.id === sid)) ? sid : null;
+  if (sid === ADMIN_PROFILE_ID) return sid;
+  return (sid && getProfiles().some(p => p.id === sid)) ? sid : null;
 }
-function needsProfileGate() { return getProfiles().length >= 2 && !activeSessionProfileId(); }
-function setActiveSessionProfile(id) { sessionStore.setItem(ACTIVE_SESSION_KEY, id); ACTIVE_PROFILE = id; }
+// Deliberately independent of sessionStorage: a fresh page load must always ask who is using the app.
+function needsProfileGate() { return !LOGIN_COMPLETE; }
+function setActiveSessionProfile(id, role) {
+  sessionStore.setItem(ACTIVE_SESSION_KEY, id);
+  if (role) sessionStore.setItem(SESSION_ROLE_KEY, role);
+  ACTIVE_PROFILE = id;
+}
+function isAdminSession() { return sessionStore.getItem(SESSION_ROLE_KEY) === 'admin'; }
 function currentProfile() {
+  if (ACTIVE_PROFILE === ADMIN_PROFILE_ID) return { id: ADMIN_PROFILE_ID, name: 'Admin', icon: '🛡️', admin: true };
   const profiles = getProfiles();
-  return profiles.find(p => p.id === ACTIVE_PROFILE) || { id: 'default', name: (state && state.settings && state.settings.name) || 'Main', icon: '🙂' };
+  return profiles.find(p => p.id === ACTIVE_PROFILE) || { id: 'default', name: (state && state.settings && state.settings.name) || 'Main User', icon: '🙂' };
 }
 function logoutProfile() {
+  LOGIN_COMPLETE = false;
   sessionStore.removeItem(ACTIVE_SESSION_KEY);
-  location.reload();
+  sessionStore.removeItem(SESSION_ROLE_KEY);
+  const shell = document.getElementById('appShell');
+  if (shell) shell.classList.add('hidden');
+  closeProfileModal();
+  showAuthGate();
 }
 
-/* ---------------- Profile UI: pill, gate (login), manage modal ---------------- */
+/* ---------------- Profile UI: pill, mandatory gate, manage modal ---------------- */
 function renderProfilePill() {
   const el = document.getElementById('profilePill');
   if (!el) return;
   const p = currentProfile();
-  el.innerHTML = `<span class="profile-pill-ico">${esc(p.icon)}</span><span class="profile-pill-name">${esc(p.name || 'Main')}</span>`;
+  const adminBadge = isAdminSession() ? '<span class="profile-admin-badge">ADMIN</span>' : '';
+  el.innerHTML = `<span class="profile-pill-ico">${esc(p.icon)}</span><span class="profile-pill-name">${esc(p.name || 'Main')}</span>${adminBadge}`;
 }
 
-let authView = 'pick'; /* 'pick' | 'pin:<id>' */
+let authView = 'pick'; /* 'pick' | 'pin:<id>' | 'admin' */
 
 function authStepPick() {
   const profiles = getProfiles();
   return `
   <div class="auth-head">
     <div class="auth-logo">💰</div>
+    <div class="auth-kicker">PAISAGURU SECURE ACCESS</div>
     <h2>Kaun Use Kar Raha Hai?</h2>
-    <p class="muted">Is device par ${profiles.length} log PaisaGuru use karte hain. Apna profile chunein — taaki kisi ka data kisi se <b>merge na ho</b>.</p>
+    <p class="muted">Apna user profile chunein, ya superuser controls ke liye Admin login karein.</p>
   </div>
-  <div class="profile-grid">
+  ${profiles.length ? `<div class="auth-section-label">USER PROFILES</div><div class="profile-grid">
     ${profiles.map(p => `
       <button class="profile-card" data-action="profile-pick" data-id="${esc(p.id)}">
         <span class="profile-ico">${esc(p.icon)}</span>
         <span class="profile-name">${esc(p.name)}</span>
         ${p.pin ? '<span class="profile-lock">🔒</span>' : ''}
       </button>`).join('')}
+  </div>` : `<div class="auth-empty"><b>Abhi koi user profile nahi hai.</b><span>Apna personal expense workspace banakar shuru karein.</span></div>`}
+  <div class="auth-gate-actions">
+    <button class="btn primary block" data-action="profile-add-open">➕ ${profiles.length ? 'Naya User' : 'Pehla User Banayein'}</button>
+    <button class="btn admin-login-btn block" data-action="admin-login-open">🛡️ Admin Login</button>
   </div>
-  <div class="small muted center mt8">🔒 Ye ek device-level profile switch hai (ghar/family ke saath data alag rakhne ke liye) — bank-grade security nahi hai.</div>`;
+  <div class="small muted center mt8">Har profile ka data is device par alag aur private rehta hai.</div>`;
 }
 function authStepPin(id) {
   const p = getProfiles().find(x => x.id === id);
@@ -187,10 +219,26 @@ function authStepPin(id) {
     <button class="btn ghost sm block mt8" type="button" data-action="profile-back">⬅️ Wapas</button>
   </form>`;
 }
+function authStepAdmin() {
+  return `
+  <div class="auth-head">
+    <div class="auth-logo admin-shield">🛡️</div>
+    <div class="auth-kicker">SUPERUSER</div>
+    <h2>Admin Login</h2>
+    <p class="muted">Admin ka apna expense workspace hai aur woh sabhi users ka data manage kar sakta hai.</p>
+  </div>
+  <form id="authAdminForm">
+    <div class="field"><label>Admin password</label><input type="password" id="authAdminPassword" autocomplete="current-password" placeholder="Password" autofocus></div>
+    <button class="btn primary block" type="submit">🛡️ Admin ke roop mein login</button>
+    <button class="btn ghost sm block mt8" type="button" data-action="profile-back">⬅️ User Profiles</button>
+  </form>`;
+}
 function renderAuthOverlay() {
   const box = document.getElementById('authModal');
   if (!box) return;
-  box.innerHTML = authView.indexOf('pin:') === 0 ? authStepPin(authView.slice(4)) : authStepPick();
+  if (authView.indexOf('pin:') === 0) box.innerHTML = authStepPin(authView.slice(4));
+  else if (authView === 'admin') box.innerHTML = authStepAdmin();
+  else box.innerHTML = authStepPick();
 }
 function showAuthGate() {
   authView = 'pick';
@@ -203,22 +251,30 @@ function pickProfile(id) {
   const p = getProfiles().find(x => x.id === id);
   if (!p) return;
   if (p.pin) { authView = 'pin:' + id; renderAuthOverlay(); return; }
-  completeLogin(id);
+  completeLogin(id, 'user');
 }
 function submitAuthPin(form) {
   const id = form.getAttribute('data-id');
   const p = getProfiles().find(x => x.id === id);
-  const val = (document.getElementById('authPinInput').value || '').trim();
+  const input = document.getElementById('authPinInput');
+  const val = (input && input.value || '').trim();
   if (!p || pinHash(val) !== p.pin) { toast('Galat PIN — dobara try karein', 'error'); return; }
-  completeLogin(id);
+  completeLogin(id, 'user');
 }
-function completeLogin(id) {
-  setActiveSessionProfile(id);
+function submitAdminLogin() {
+  const input = document.getElementById('authAdminPassword');
+  const password = input ? input.value : '';
+  if (!verifyLocalAdminPassword(password)) { toast('Admin password galat hai', 'error'); if (input) input.select(); return; }
+  completeLogin(ADMIN_PROFILE_ID, 'admin');
+}
+function completeLogin(id, role) {
+  LOGIN_COMPLETE = true;
+  setActiveSessionProfile(id, role || 'user');
   hideAuthGate();
-  bootApp();
+  bootApp(true);
 }
 
-/* ---------------- Profile manage modal (add/switch/remove) — Settings se ---------------- */
+/* ---------------- Profile manage modal (add/switch/remove) ---------------- */
 function openProfileModal(html) {
   document.getElementById('profileModal').innerHTML = html;
   document.getElementById('profileOverlay').classList.remove('hidden');
@@ -232,46 +288,45 @@ function profileAddFormHtml() {
     <div class="wiz-step">👥 USER</div>
     <h2>${firstTime ? 'Aapka Naam Kya Hai?' : 'Naya User Add Karein'}</h2>
     <p class="muted">${firstTime
-      ? 'Ye naam aapki maujooda profile ban jayega — aapka purana data isi ke saath bilkul surakshit rahega.'
-      : 'Family/dost ka naam daalein — unka data <b>bilkul alag</b> rahega, aapse kabhi merge nahi hoga.'}</p>
+      ? 'Ye naam aapki personal profile banayega — maujooda local data isi profile ke saath surakshit rahega.'
+      : 'Family/dost ka naam daalein — unka data bilkul alag rahega.'}</p>
   </div>
   <form id="profileAddForm">
     <div class="field"><label>Naam</label><input type="text" id="paName" maxlength="24" placeholder="e.g. Ritesh" required autofocus></div>
-    <div class="field">
-      <label>Icon</label>
-      <div class="emoji-row">${PROFILE_ICONS.map((ic, i) => `<label class="emoji-chip"><input type="radio" name="paIcon" value="${ic}" ${i === 0 ? 'checked' : ''}><span>${ic}</span></label>`).join('')}</div>
-    </div>
-    <div class="field"><label>PIN (optional, 4+ digit — kisi aur ko na dikhe isliye)</label><input type="password" id="paPin" inputmode="numeric" maxlength="8" placeholder="Khaali bhi chhod sakte hain"></div>
-    <button class="btn primary block" type="submit">✅ ${firstTime ? 'Shuru Karein' : 'Add Karein'}</button>
+    <div class="field"><label>Icon</label><div class="emoji-row">${PROFILE_ICONS.map((ic, i) => `<label class="emoji-chip"><input type="radio" name="paIcon" value="${ic}" ${i === 0 ? 'checked' : ''}><span>${ic}</span></label>`).join('')}</div></div>
+    <div class="field"><label>PIN (optional, 4–8 digits)</label><input type="password" id="paPin" inputmode="numeric" maxlength="8" placeholder="Khaali bhi chhod sakte hain"></div>
+    <button class="btn primary block" type="submit">✅ ${firstTime ? 'Profile Banayein' : 'Add Karein'}</button>
     <button class="btn ghost sm block mt8" type="button" data-action="close-profile">Cancel</button>
   </form>`;
 }
 function openProfileAdd() { openProfileModal(profileAddFormHtml()); }
 
 function submitProfileAdd(form) {
-  const name = (document.getElementById('paName').value || '').trim();
+  const nameInput = document.getElementById('paName');
+  const pinInput = document.getElementById('paPin');
+  const name = (nameInput && nameInput.value || '').trim();
   if (!name) { toast('Naam likhein', 'error'); return; }
   const icon = (form.querySelector('input[name="paIcon"]:checked') || {}).value || '🙂';
-  const pin = (document.getElementById('paPin').value || '').trim();
+  const pin = (pinInput && pinInput.value || '').trim();
+  if (pin && (!/^\d{4,8}$/.test(pin))) { toast('PIN 4–8 digits ka hona chahiye', 'error'); return; }
   const wasFirst = getProfiles().length === 0;
   const profile = createProfile(name, icon, pin);
   closeProfileModal();
-  if (wasFirst) {
-    setActiveSessionProfile(profile.id);
-    toast('Profile ban gayi ✔ Ab aap "' + name + '" ke naam se jaani jaayengi', 'success');
+  if (wasFirst && !LOGIN_COMPLETE) {
+    toast('Profile ban gayi ✔', 'success');
+    completeLogin(profile.id, 'user');
+  } else if (isAdminSession()) {
+    toast('Naya user "' + name + '" ban gaya ✔', 'success');
     renderAll();
   } else {
-    showConfirm('Naya user "' + name + '" ban gaya! Abhi turant isi par switch karein?', () => {
-      setActiveSessionProfile(profile.id);
-      location.reload();
-    });
+    showConfirm('Naya user "' + name + '" ban gaya! Abhi isi par switch karein?', () => doSwitchProfile(profile.id));
   }
 }
 
 function attemptSwitchProfile(id) {
   const p = getProfiles().find(x => x.id === id);
   if (!p) return;
-  if (!p.pin) { doSwitchProfile(id); return; }
+  if (isAdminSession() || !p.pin) { doSwitchProfile(id); return; }
   openProfileModal(`
   <div class="wiz-head"><h2>${esc(p.icon)} ${esc(p.name)}</h2><p class="muted">PIN daal kar switch karein</p></div>
   <form id="switchPinForm" data-id="${esc(id)}">
@@ -283,11 +338,23 @@ function attemptSwitchProfile(id) {
 function submitSwitchPin(form) {
   const id = form.getAttribute('data-id');
   const p = getProfiles().find(x => x.id === id);
-  const val = (document.getElementById('switchPinInput').value || '').trim();
+  const input = document.getElementById('switchPinInput');
+  const val = (input && input.value || '').trim();
   if (!p || pinHash(val) !== p.pin) { toast('Galat PIN', 'error'); return; }
   doSwitchProfile(id);
 }
-function doSwitchProfile(id) { setActiveSessionProfile(id); closeProfileModal(); location.reload(); }
+function doSwitchProfile(id) {
+  const role = isAdminSession() ? 'admin' : 'user';
+  setActiveSessionProfile(id, role);
+  state = loadState();
+  closeProfileModal();
+  renderAll();
+  toast(role === 'admin' ? 'Admin view: ' + currentProfile().name : 'User switch ho gaya', 'success');
+}
+function returnToAdminWorkspace() {
+  if (!isAdminSession()) return;
+  doSwitchProfile(ADMIN_PROFILE_ID);
+}
 
 function confirmRemoveProfile(id) {
   const p = getProfiles().find(x => x.id === id);
@@ -296,46 +363,59 @@ function confirmRemoveProfile(id) {
     const wasActive = id === ACTIVE_PROFILE;
     removeProfile(id);
     toast('User delete ho gaya', 'success');
-    if (wasActive) { sessionStore.removeItem(ACTIVE_SESSION_KEY); location.reload(); }
+    if (wasActive && isAdminSession()) returnToAdminWorkspace();
+    else if (wasActive) logoutProfile();
     else renderAll();
   });
 }
 
+function changeLocalAdminPassword() {
+  if (!isAdminSession()) return;
+  const next = (document.getElementById('localAdminNewPassword') || {}).value || '';
+  const confirm = (document.getElementById('localAdminConfirmPassword') || {}).value || '';
+  if (next.length < 6) { toast('Password kam se kam 6 characters ka ho', 'error'); return; }
+  if (next !== confirm) { toast('Dono passwords match nahi karte', 'error'); return; }
+  saveLocalAdminPassword(next);
+  toast('Admin password badal gaya ✔', 'success');
+  const form = document.getElementById('localAdminPasswordForm');
+  if (form) form.reset();
+}
+
 function profileQuickSwitchHtml() {
   const profiles = getProfiles();
+  const admin = isAdminSession();
   const others = profiles.filter(p => p.id !== ACTIVE_PROFILE);
   return `
-  <div class="wiz-head"><h2>👥 Users</h2><p class="muted">Aap abhi <b>${esc(currentProfile().name)}</b> ke roop mein login hain.</p></div>
-  ${others.length ? `<div class="profile-list">${others.map(p => `
+  <div class="wiz-head"><h2>${admin ? '🛡️ Admin Superuser' : '👥 Users'}</h2><p class="muted">Abhi <b>${esc(currentProfile().name)}</b> workspace khula hai.</p></div>
+  ${admin && ACTIVE_PROFILE !== ADMIN_PROFILE_ID ? '<button class="btn primary sm block" data-action="admin-home">🛡️ Admin Workspace par Wapas</button>' : ''}
+  ${others.length ? `<div class="profile-list mt8">${others.map(p => `
     <button class="profile-row as-btn" data-action="profile-switch" data-id="${esc(p.id)}">
-      <span class="profile-ico">${esc(p.icon)}</span>
-      <div class="profile-row-body"><div class="profile-row-name">${esc(p.name)}</div>${p.pin ? '<div class="small muted">🔒 PIN chahiye</div>' : ''}</div>
-      <span class="small muted">Switch ➜</span>
-    </button>`).join('')}</div>` : '<div class="small muted" style="margin-bottom:10px">Abhi koi aur user nahi hai.</div>'}
-  <button class="btn gold sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button>
-  <button class="btn ghost sm block mt8" data-action="goto-settings-users">⚙️ Sab Users Manage Karein</button>
-  ${profiles.length >= 2 ? '<button class="btn ghost sm block mt8" data-action="profile-logout">🔒 Logout</button>' : ''}`;
+      <span class="profile-ico">${esc(p.icon)}</span><div class="profile-row-body"><div class="profile-row-name">${esc(p.name)}</div>${p.pin && !admin ? '<div class="small muted">🔒 PIN chahiye</div>' : ''}</div><span class="small muted">Open ➜</span>
+    </button>`).join('')}</div>` : '<div class="small muted mt8">Koi aur user nahi hai.</div>'}
+  <button class="btn ghost sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button>
+  <button class="btn ghost sm block mt8" data-action="goto-settings-users">⚙️ Users Manage Karein</button>
+  <button class="btn ghost sm block mt8" data-action="profile-logout">🔒 Logout</button>`;
 }
 function openProfileQuickSwitch() { openProfileModal(profileQuickSwitchHtml()); }
 
 function usersCardHtml() {
   const profiles = getProfiles();
-  return `
-  <div class="card">
-    <div class="card-title">👥 Users — Is Device Par</div>
-    ${profiles.length === 0
-      ? `<div class="small muted" style="margin-bottom:10px">Abhi sirf ek hi user hai. Agar family/dost bhi isi device par PaisaGuru use karte hain, unke liye <b>alag profile</b> banayein — taaki kisi ka data merge na ho.</div>`
-      : `<div class="profile-list">${profiles.map(p => `
-        <div class="profile-row ${p.id === ACTIVE_PROFILE ? 'current' : ''}">
-          <span class="profile-ico">${esc(p.icon)}</span>
-          <div class="profile-row-body"><div class="profile-row-name">${esc(p.name)}${p.id === ACTIVE_PROFILE ? ' <span class="chip good">Aap</span>' : ''}</div>${p.pin ? '<div class="small muted">🔒 PIN protected</div>' : ''}</div>
-          ${p.id !== ACTIVE_PROFILE ? `<button class="btn ghost sm" data-action="profile-switch" data-id="${esc(p.id)}">Switch</button>` : ''}
-          ${profiles.length > 1 ? `<button class="delbtn" data-action="profile-remove" data-id="${esc(p.id)}" title="Remove">🗑️</button>` : ''}
-        </div>`).join('')}</div>`}
-    <button class="btn gold sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button>
-    ${profiles.length >= 2 ? '<button class="btn ghost sm block mt8" data-action="profile-logout">🔒 Switch User / Logout</button>' : ''}
-  </div>`;
+  const admin = isAdminSession();
+  if (!admin) {
+    const p = currentProfile();
+    return `<div class="card"><div class="card-title">👤 Aapki Profile</div>
+      <div class="profile-row current"><span class="profile-ico">${esc(p.icon)}</span><div class="profile-row-body"><div class="profile-row-name">${esc(p.name)} <span class="chip good">Aap</span></div><div class="small muted">${p.pin ? '🔒 PIN protected' : 'PIN nahi laga hai'}</div></div></div>
+      <button class="btn ghost sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button>
+      <button class="btn ghost sm block mt8" data-action="profile-logout">🔒 Logout / Switch User</button></div>`;
+  }
+  return `<div class="card admin-users-card"><div class="card-title">🛡️ Admin — Sabhi Users</div>
+    <p class="small muted" style="margin-bottom:10px">Admin kisi bhi user ka workspace kholkar uska data dekh aur manage kar sakta hai. Admin ka apna data alag rehta hai.</p>
+    ${ACTIVE_PROFILE !== ADMIN_PROFILE_ID ? '<button class="btn primary sm block" data-action="admin-home">🛡️ Apna Admin Workspace Kholein</button>' : '<div class="chip info" style="margin-bottom:10px">Admin workspace active</div>'}
+    ${profiles.length ? `<div class="profile-list mt8">${profiles.map(p => `<div class="profile-row ${p.id === ACTIVE_PROFILE ? 'current' : ''}"><span class="profile-ico">${esc(p.icon)}</span><div class="profile-row-body"><div class="profile-row-name">${esc(p.name)}${p.id === ACTIVE_PROFILE ? ' <span class="chip info">Viewing</span>' : ''}</div><div class="small muted">${p.pin ? '🔒 User PIN set' : 'No PIN'}</div></div>${p.id !== ACTIVE_PROFILE ? `<button class="btn ghost sm" data-action="admin-view-profile" data-id="${esc(p.id)}">View</button>` : ''}<button class="delbtn" data-action="profile-remove" data-id="${esc(p.id)}" title="Remove">🗑️</button></div>`).join('')}</div>` : '<div class="small muted mt8">Abhi koi user profile nahi hai.</div>'}
+    <button class="btn ghost sm block mt8" data-action="profile-add-open">➕ Naya User Add Karein</button></div>
+    <div class="card"><div class="card-title">🔐 Local Admin Password</div><p class="small muted" style="margin-bottom:10px">Default <b>admin123</b> hai. Is device ke login gate ke liye naya password set karein.</p><form id="localAdminPasswordForm"><div class="field"><label>Naya password</label><input id="localAdminNewPassword" type="password" minlength="6" required></div><div class="field"><label>Dobara likhein</label><input id="localAdminConfirmPassword" type="password" minlength="6" required></div><button class="btn primary block" type="submit">Password Badlein</button></form></div>`;
 }
+
 
 /* ---------------- Categories ---------------- */
 const CATEGORIES = [
@@ -2950,9 +3030,12 @@ document.addEventListener('click', e => {
     /* ---- Profiles / multi-user login ---- */
     case 'profile-pick': pickProfile(t.dataset.id); break;
     case 'profile-back': authView = 'pick'; renderAuthOverlay(); break;
+    case 'admin-login-open': authView = 'admin'; renderAuthOverlay(); break;
     case 'profile-menu': openProfileQuickSwitch(); break;
     case 'profile-add-open': openProfileAdd(); break;
     case 'profile-switch': attemptSwitchProfile(t.dataset.id); break;
+    case 'admin-view-profile': if (isAdminSession()) doSwitchProfile(t.dataset.id); break;
+    case 'admin-home': returnToAdminWorkspace(); break;
     case 'profile-remove': confirmRemoveProfile(t.dataset.id); break;
     case 'profile-logout': logoutProfile(); break;
     case 'close-profile': closeProfileModal(); break;
@@ -2979,8 +3062,10 @@ document.addEventListener('submit', e => {
   else if (e.target.id === 'licLoginForm') submitAccountLogin(e.target);
   else if (e.target.id === 'licKeyForm') submitDirectKey(e.target);
   else if (e.target.id === 'authPinForm') submitAuthPin(e.target);
+  else if (e.target.id === 'authAdminForm') submitAdminLogin();
   else if (e.target.id === 'profileAddForm') submitProfileAdd(e.target);
   else if (e.target.id === 'switchPinForm') submitSwitchPin(e.target);
+  else if (e.target.id === 'localAdminPasswordForm') changeLocalAdminPassword();
 });
 
 document.addEventListener('input', e => {
@@ -3042,23 +3127,25 @@ document.getElementById('goalOverlay').addEventListener('click', e => {
 document.getElementById('profileOverlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeProfileModal();
 });
-/* authOverlay ko jaan-bujh kar backdrop-click se close NAHI kiya — login mandatory hai jab 2+ users ho */
+/* authOverlay backdrop-click se close NAHI hota — login har app start par mandatory hai. */
 
 /* ---------------- Init ---------------- */
-function bootApp() {
+let appServicesStarted = false;
+function bootApp(revealShell = true) {
   state = loadState();
   selectedMonth = monthKey(new Date());
   const shell = document.getElementById('appShell');
-  if (shell) shell.classList.remove('hidden');
+  if (shell) shell.classList.toggle('hidden', !revealShell);
   renderAll();
-  maybeInitLicense(); /* 🔐 licensing sirf tab jab FIN.apiBase set ho */
-  refreshRates(); /* 📡 internet se latest rates (fail par bundled/cached — app kabhi nahi rukti) */
+  if (!appServicesStarted) {
+    appServicesStarted = true;
+    maybeInitLicense(); /* 🔐 licensing sirf tab jab FIN.apiBase set ho */
+    refreshRates(); /* 📡 latest rates; fail par bundled/cached data */
+  }
 }
 
-if (needsProfileGate()) {
-  showAuthGate();
-} else {
-  ACTIVE_PROFILE = activeSessionProfileId() || 'default';
-  setActiveSessionProfile(ACTIVE_PROFILE);
-  bootApp();
-}
+// State background mein initialise hota hai, lekin har page load par shell tab tak
+// hidden rehta hai jab tak user profile ya Admin explicitly login na kare.
+ACTIVE_PROFILE = 'default';
+bootApp(false);
+showAuthGate();

@@ -804,12 +804,12 @@ test('invLinksHtml: alag alag investment ke sahi verified domains', () => {
 /* ============================================================
    12. MULTI-USER PROFILES (login gate, alag data)
    ============================================================ */
-test('solo user (0 profiles): koi login gate nahi, app turant khulti hai', () => {
+test('solo user (0 profiles): always-on login gate app ko lock rakhta hai', () => {
   const { win, doc } = makeApp();
   assert.equal(win.getProfiles().length, 0);
-  assert.equal(win.needsProfileGate(), false);
-  assert.equal(doc.getElementById('appShell').classList.contains('hidden'), false);
-  assert.equal(doc.getElementById('authOverlay').classList.contains('hidden'), true);
+  assert.equal(win.needsProfileGate(), true);
+  assert.equal(doc.getElementById('appShell').classList.contains('hidden'), true);
+  assert.equal(doc.getElementById('authOverlay').classList.contains('hidden'), false);
 });
 test('solo user ka data purani "paisaguru_v1" key mein hi rehta hai (backward compatible)', () => {
   const { win } = makeApp({ storage: seeded() });
@@ -861,4 +861,139 @@ test('removeProfile: profile aur uska data dono hat jaate hain', () => {
 test('usersCardHtml: "Naya User" add karne ka button hamesha dikhta hai', () => {
   const { win } = makeApp({ storage: seeded() });
   assert.match(win.usersCardHtml(), /profile-add-open/);
+});
+
+/* ============================================================
+   13. ALWAYS-ON GATE + ADMIN SUPERUSER
+   ============================================================ */
+test('login gate par Admin Login option hamesha dikhta hai', () => {
+  const { doc } = makeApp();
+  assert.match(doc.getElementById('authModal').innerHTML, /admin-login-open/);
+});
+test('zero profiles par pehla user banane ka option dikhta hai', () => {
+  const { doc } = makeApp();
+  assert.match(doc.getElementById('authModal').textContent, /Pehla User Banayein/);
+});
+test('profile create hone ke baad gate par user naam dikhta hai', () => {
+  const { win, doc } = makeApp();
+  win.createProfile('Asha', '👩', '');
+  win.renderAuthOverlay();
+  assert.match(doc.getElementById('authModal').textContent, /Asha/);
+});
+test('local Admin ka default password admin123 hai', () => {
+  const { win } = makeApp();
+  assert.equal(win.verifyLocalAdminPassword('admin123'), true);
+});
+test('local Admin galat password reject karta hai', () => {
+  const { win } = makeApp();
+  assert.equal(win.verifyLocalAdminPassword('wrong-password'), false);
+});
+test('Admin ka storage key users se alag hai', () => {
+  const { win } = makeApp();
+  assert.equal(win.profileStorageKey('__admin__'), 'paisaguru_v1__admin');
+});
+test('Admin login superuser role set karta hai', () => {
+  const { win } = makeApp();
+  win.completeLogin('__admin__', 'admin');
+  assert.equal(win.isAdminSession(), true);
+  assert.equal(win.sessionStorage.getItem('pg_session_role'), 'admin');
+});
+test('Admin synthetic profile ka naam aur icon sahi hai', () => {
+  const { win } = makeApp();
+  win.completeLogin('__admin__', 'admin');
+  assert.equal(win.currentProfile().name, 'Admin');
+  assert.equal(win.currentProfile().icon, '🛡️');
+});
+test('Admin workspace ka data default user data se isolate hai', () => {
+  const { win } = makeApp({ storage: seeded() });
+  win.completeLogin('__admin__', 'admin');
+  assert.equal(win.monthData('2026-09'), null);
+  assert.notEqual(win.currentStorageKey(), 'paisaguru_v1');
+});
+test('normal user login shell kholta aur gate band karta hai', () => {
+  const { win, doc } = makeApp();
+  const p = win.createProfile('Ravi', '🙂', '');
+  win.completeLogin(p.id, 'user');
+  assert.equal(doc.getElementById('appShell').classList.contains('hidden'), false);
+  assert.equal(doc.getElementById('authOverlay').classList.contains('hidden'), true);
+});
+test('normal login admin role set nahi karta', () => {
+  const { win } = makeApp();
+  const p = win.createProfile('Ravi', '🙂', '');
+  win.completeLogin(p.id, 'user');
+  assert.equal(win.isAdminSession(), false);
+});
+test('Admin users card mein sab local users dikhte hain', () => {
+  const { win } = makeApp();
+  win.createProfile('Ravi', '🙂', '');
+  win.createProfile('Asha', '👩', '');
+  win.completeLogin('__admin__', 'admin');
+  const html = win.usersCardHtml();
+  assert.match(html, /Ravi/);
+  assert.match(html, /Asha/);
+});
+test('Admin users card user workspace View action deta hai', () => {
+  const { win } = makeApp();
+  win.createProfile('Ravi', '🙂', '');
+  win.completeLogin('__admin__', 'admin');
+  assert.match(win.usersCardHtml(), /admin-view-profile/);
+});
+test('Admin PIN ke bina user workspace dekh sakta hai', () => {
+  const { win } = makeApp();
+  const p = win.createProfile('Locked User', '🙂', '1234');
+  win.completeLogin('__admin__', 'admin');
+  win.attemptSwitchProfile(p.id);
+  assert.equal(win.currentProfile().name, 'Locked User');
+  assert.equal(win.isAdminSession(), true);
+});
+test('normal user users card doosre users ka data expose nahi karta', () => {
+  const { win } = makeApp();
+  const p = win.createProfile('Ravi', '🙂', '');
+  win.createProfile('Asha Secret', '👩', '');
+  win.completeLogin(p.id, 'user');
+  assert.doesNotMatch(win.usersCardHtml(), /Asha Secret/);
+});
+test('Admin user view se apne workspace par laut sakta hai', () => {
+  const { win } = makeApp();
+  const p = win.createProfile('Ravi', '🙂', '');
+  win.completeLogin('__admin__', 'admin');
+  win.doSwitchProfile(p.id);
+  win.returnToAdminWorkspace();
+  assert.equal(win.currentProfile().id, '__admin__');
+});
+test('local Admin password badla ja sakta hai', () => {
+  const { win } = makeApp();
+  win.saveLocalAdminPassword('naya-password');
+  assert.equal(win.verifyLocalAdminPassword('admin123'), false);
+  assert.equal(win.verifyLocalAdminPassword('naya-password'), true);
+});
+test('local Admin password plaintext mein save nahi hota', () => {
+  const { win } = makeApp();
+  win.saveLocalAdminPassword('bahut-secret');
+  assert.notEqual(win.localStorage.getItem('pg_local_admin_password'), 'bahut-secret');
+});
+test('Admin synthetic profile remove nahi ho sakta', () => {
+  const { win } = makeApp();
+  win.createProfile('Ravi', '🙂', '');
+  win.removeProfile('__admin__');
+  assert.equal(win.getProfiles().length, 1);
+});
+test('Admin quick switch superuser context dikhata hai', () => {
+  const { win } = makeApp();
+  win.completeLogin('__admin__', 'admin');
+  assert.match(win.profileQuickSwitchHtml(), /Admin Superuser/);
+});
+test('Admin profile pill par ADMIN badge aata hai', () => {
+  const { win, doc } = makeApp();
+  win.completeLogin('__admin__', 'admin');
+  win.renderProfilePill();
+  assert.match(doc.getElementById('profilePill').textContent, /ADMIN/);
+});
+test('logout shell chhupata aur login gate dobara kholta hai', () => {
+  const { win, doc } = makeApp();
+  const p = win.createProfile('Ravi', '🙂', '');
+  win.completeLogin(p.id, 'user');
+  win.logoutProfile();
+  assert.equal(doc.getElementById('appShell').classList.contains('hidden'), true);
+  assert.equal(doc.getElementById('authOverlay').classList.contains('hidden'), false);
 });
