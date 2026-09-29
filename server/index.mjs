@@ -244,11 +244,6 @@ function sendMessage(text, extra) {
 
 
 // ---------------- Telegram command control ----------------
-const TELEGRAM_ADMIN_USER_IDS = String(process.env.TELEGRAM_ADMIN_USER_IDS || '')
-  .split(',')
-  .map(x => x.trim())
-  .filter(Boolean);
-
 function telegramCommandAllowed(message) {
   if (!telegramOn()) return false;
   const chatId = message && message.chat && message.chat.id;
