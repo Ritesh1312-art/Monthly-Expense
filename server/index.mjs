@@ -23,7 +23,9 @@ import { mailOn, sendOtpMail, maskEmail, isValidEmail } from './mail.mjs';
 
 /* ---------------- Env ---------------- */
 const PORT = Number(process.env.PORT || 3000);
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'change-me';
+// Password-only admin login. ADMIN_SECRET remains a supported legacy credential.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 const DATA_DIR = process.env.DATA_DIR || './data';
 const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 7);
 const MAX_TRIALS_PER_IP = Number(process.env.MAX_TRIALS_PER_IP || 3);
@@ -46,7 +48,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 function emptyDb() {
-  return { licenses: [], users: [], sessions: {}, trials: {}, requests: [], backups: {}, otps: {} };
+  return { licenses: [], users: [], sessions: {}, trials: {}, requests: [], backups: {}, otps: {}, settings: {} };
 }
 
 function loadDb() {
@@ -97,6 +99,21 @@ function verifyPass(pass, stored) {
     if (got.length !== want.length) return false;
     return crypto.timingSafeEqual(got, want);
   } catch (e) { return false; }
+}
+
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a || ''));
+  const right = Buffer.from(String(b || ''));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function verifyAdminCredential(value) {
+  const given = String(value || '');
+  if (!given) return false;
+  // Existing deployments can continue using ADMIN_SECRET unchanged.
+  if (ADMIN_SECRET && safeEqual(given, ADMIN_SECRET)) return true;
+  const savedHash = db.settings && db.settings.adminPasswordHash;
+  return savedHash ? verifyPass(given, savedHash) : safeEqual(given, ADMIN_PASSWORD);
 }
 
 function normPhone(phone) {
@@ -217,9 +234,11 @@ function readBody(req) {
   });
 }
 
+function adminCredential(req, url) {
+  return url.searchParams.get('key') || req.headers['x-admin-key'] || '';
+}
 function isAdmin(req, url) {
-  const given = url.searchParams.get('key') || req.headers['x-admin-key'] || '';
-  return String(given) === ADMIN_SECRET && ADMIN_SECRET.length > 0;
+  return verifyAdminCredential(adminCredential(req, url));
 }
 
 /* ---------------- Telegram ---------------- */
@@ -369,8 +388,8 @@ function telegramStatusText() {
 async function handleTelegramCommand(message) {
   if (!message || !message.text || !telegramCommandAllowed(message)) return;
   const raw = String(message.text).trim();
-  const first = raw.split(/\\s+/)[0];
-  const command = first.replace(/^\\//, '').split('@')[0].toLowerCase();
+  const first = raw.split(/\s+/)[0];
+  const command = first.replace(/^\//, '').split('@')[0].toLowerCase();
   if (!command) return;
 
   const replies = {
@@ -494,8 +513,10 @@ export async function handle(req, res) {
     return send(res, 200, portalPage({ upiId: UPI_ID, upiName: UPI_NAME, price: PRICE_LABEL }));
   }
   if (req.method === 'GET' && p === '/admin') {
-    if (!isAdmin(req, url)) return send(res, 401, '<h1>401 — admin key galat hai</h1>');
-    return send(res, 200, adminPage({ adminKey: url.searchParams.get('key') || '' }));
+    // The page itself is public; all data APIs stay protected. A valid legacy
+    // ?key=ADMIN_SECRET still opens the dashboard directly.
+    const supplied = adminCredential(req, url);
+    return send(res, 200, adminPage({ adminKey: verifyAdminCredential(supplied) ? supplied : '' }));
   }
 
   /* ---------- health ---------- */
@@ -522,9 +543,18 @@ export async function handle(req, res) {
     });
   }
 
-  /* ---------- admin GET APIs ---------- */
+  /* ---------- password-only admin login ---------- */
+  if (req.method === 'POST' && p === '/api/admin/login') {
+    const loginBody = await readBody(req);
+    if (!verifyAdminCredential(loginBody.password)) {
+      return fail(res, 401, 'Admin password galat hai', 'bad_admin_password');
+    }
+    return ok(res, {});
+  }
+
+  /* ---------- protected admin APIs ---------- */
   if (p.startsWith('/api/admin/')) {
-    if (!isAdmin(req, url)) return fail(res, 401, 'Admin key galat hai', 'no_admin');
+    if (!isAdmin(req, url)) return fail(res, 401, 'Admin password galat hai', 'no_admin');
     return adminApi(req, res, url, p);
   }
 
@@ -889,6 +919,16 @@ async function adminApi(req, res, url, p) {
 
   if (req.method !== 'POST') return fail(res, 404, 'Not found', 'not_found');
   const body = await readBody(req);
+
+  if (p === '/api/admin/password') {
+    const password = String(body.password || '');
+    if (password.length < 6) return fail(res, 400, 'Password kam se kam 6 characters ka ho', 'bad_password');
+    if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+    db.settings.adminPasswordHash = hashPass(password);
+    db.settings.adminPasswordChangedAt = Date.now();
+    saveDb();
+    return ok(res, {});
+  }
 
   if (p === '/api/admin/keys/new') {
     const lic = createLicense({});

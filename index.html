@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>PaisaGuru — Monthly Expense Tracker & Smart Saving Advisor</title>
   <meta name="description" content="Salary aane pe kharcha plan karo, bacha paisa invest karo, har month analysis se paise bachao." />
-  <meta name="theme-color" content="#0b6b5a" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>" />
+  <meta name="theme-color" content="#111827" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%234f46e5'/><text x='50' y='72' text-anchor='middle' font-size='66' fill='white'>₹</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -16,7 +19,7 @@
   <div id="appShell" class="hidden">
   <header class="topbar">
     <div class="brand">
-      <span class="brand-icon">💰</span>
+      <span class="brand-icon" aria-hidden="true">₹</span>
       <span class="brand-name">PaisaGuru</span>
     </div>
     <div class="month-nav">
@@ -48,7 +51,7 @@
   </nav>
   </div>
 
-  <!-- "Kaun use kar raha hai?" — multi-user login gate (jab 2+ profiles ho) -->
+  <!-- Always-on User Profile / Admin login gate -->
   <div class="modal-overlay auth-overlay hidden" id="authOverlay">
     <div class="modal auth-modal" id="authModal"></div>
   </div>
